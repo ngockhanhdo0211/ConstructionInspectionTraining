@@ -1,3 +1,4 @@
+using ConstructionInspection.Application.Common.Authorization;
 using ConstructionInspection.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -43,10 +44,10 @@ public sealed class ApplicationDbContext(
         });
 
         builder.Entity<IdentityRole<Guid>>().HasData(
-            CreateRole(InspectorRoleId, "INSPECTOR"),
-            CreateRole(ReviewerRoleId, "REVIEWER"),
-            CreateRole(ManagerRoleId, "MANAGER"),
-            CreateRole(AdministratorRoleId, "ADMINISTRATOR"));
+            CreateRole(InspectorRoleId, ApplicationRoles.Inspector),
+            CreateRole(ReviewerRoleId, ApplicationRoles.Reviewer),
+            CreateRole(ManagerRoleId, ApplicationRoles.Manager),
+            CreateRole(AdministratorRoleId, ApplicationRoles.Administrator));
     }
 
     private static IdentityRole<Guid> CreateRole(Guid id, string name)
