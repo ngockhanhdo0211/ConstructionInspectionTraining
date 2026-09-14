@@ -19,9 +19,9 @@ Tài liệu này là thiết kế, chưa tạo Entity, Handler, Controller, EF c
 ### 1.1 Đối chiếu tài liệu hiện hành
 
 - `docs/01-product-scope-and-use-cases.md`: triển khai đúng UC03–UC07, giữ nguyên 38 Use Case còn lại và quy tắc scope đơn giản của MVP.
-- `docs/02-erd-and-data-design.md`: giữ self-reference, audit FK, soft deactivate, UTC và rowversion; thiết kế này đề xuất bổ sung `ObjectType`, `Location`, `UpdatedById` vào schema tương lai.
+- `docs/02-erd-and-data-design.md`: giữ self-reference, audit FK, soft deactivate, UTC và rowversion; thiết kế này đề xuất bổ sung `ObjectType`, `Location`, `UpdatedByUserId` vào schema tương lai.
 - `docs/03-inspection-vertical-slice-design.md`: dùng cùng Clean Architecture, CQRS, DTO, ProblemDetails, Base64 rowVersion, pagination và query projection.
-- Tên audit được chốt thống nhất là `CreatedById`/`UpdatedById` trong Domain, API và database. Đây là refinement của tên `CreatedByUserId` trong `docs/02`; EF Configuration tạo FK tới `AspNetUsers.Id` mà Domain không cần navigation Identity.
+- Tên audit được chốt thống nhất là `CreatedByUserId`/`UpdatedByUserId` trong Domain, API và database. EF Configuration tạo FK tới `AspNetUsers.Id` mà Domain không cần navigation Identity.
 
 Không có mâu thuẫn với danh mục 43 Use Case. Chênh lệch schema nêu trên là phần mở rộng chi tiết cho UC03–UC07, không thay đổi hành vi của Use Case khác.
 
@@ -56,9 +56,9 @@ Quy tắc:
 | `Location` | `string?` | Vị trí/địa chỉ mô tả ngắn |
 | `Description` | `string?` | Mô tả nghiệp vụ |
 | `IsActive` | `bool` | Mặc định `true`; chỉ chuyển `true → false` trong slice này |
-| `CreatedById` | `Guid` | ID user tạo; không navigation tới Identity |
+| `CreatedByUserId` | `Guid` | ID user tạo; không navigation tới Identity |
 | `CreatedAt` | `DateTime` UTC | Thời điểm tạo |
-| `UpdatedById` | `Guid?` | ID user cập nhật/deactivate gần nhất |
+| `UpdatedByUserId` | `Guid?` | ID user cập nhật/deactivate gần nhất |
 | `UpdatedAt` | `DateTime?` UTC | Thời điểm cập nhật/deactivate gần nhất |
 | `RowVersion` | `byte[]` | SQL Server concurrency token |
 
@@ -91,9 +91,9 @@ Hierarchy type được chốt như sau:
 | Building | Project |
 | Floor | Building |
 | Room | Floor |
-| WorkItem | Project, Building, Floor hoặc Room |
+| WorkItem | Room |
 
-Không bắt buộc cây phải có đủ năm cấp. `WorkItem` là leaf và không được làm cha của Object khác. `Project` luôn là root. Domain giới hạn tối đa năm cấp, tính Project là cấp 1, bằng constant `MaximumHierarchyDepth = 5`.
+Hierarchy bắt buộc tuyến tính theo loại: `Project → Building → Floor → Room → WorkItem`. Mỗi loại ngoài Project phải có parent thuộc đúng loại đứng ngay trước; `WorkItem` là leaf và không được làm cha của Object khác. `Project` luôn là root. Domain giới hạn tối đa năm cấp, tính Project là cấp 1, bằng constant `MaximumHierarchyDepth = 5`.
 
 ## 4. Quy tắc nghiệp vụ
 
@@ -118,7 +118,7 @@ Server không sinh Code và không dùng `MAX + 1`. Kiểm tra trùng không ph�
 - Đổi parent không được tạo chu trình.
 - Construction Object inactive không nhận Inspection, Checklist hoặc RFI mới ở các slice sau; hồ sơ lịch sử vẫn giữ FK và đọc được theo quyền.
 - Không hard delete.
-- Deactivate bị từ chối khi Object còn ít nhất một direct child active.
+- Deactivate bị từ chối khi Object còn ít nhất một descendant active ở bất kỳ cấp nào.
 - Child inactive không ngăn deactivate; child vẫn giữ nguyên parent để bảo toàn cây lịch sử.
 - Object đã có hồ sơ nghiệp vụ vẫn có thể deactivate; không cascade, sửa hoặc xóa hồ sơ cũ.
 - Update và Deactivate bắt buộc so khớp `RowVersion`.
@@ -202,9 +202,9 @@ Response `201`:
   "location": "Tầng 3, khối A",
   "description": "Phòng kỹ thuật điện",
   "isActive": true,
-  "createdById": "44444444-aaaa-bbbb-cccc-444444444444",
+  "createdByUserId": "44444444-aaaa-bbbb-cccc-444444444444",
   "createdAt": "2026-09-13T08:30:00Z",
-  "updatedById": null,
+  "updatedByUserId": null,
   "updatedAt": null,
   "rowVersion": "AAAAAAAAB9A="
 }
@@ -303,9 +303,9 @@ Response đề xuất:
   ],
   "hasChildren": true,
   "directChildrenCount": 2,
-  "createdById": "44444444-aaaa-bbbb-cccc-444444444444",
+  "createdByUserId": "44444444-aaaa-bbbb-cccc-444444444444",
   "createdAt": "2026-09-13T08:30:00Z",
-  "updatedById": null,
+  "updatedByUserId": null,
   "updatedAt": null,
   "rowVersion": "AAAAAAAAB9A="
 }
@@ -347,7 +347,7 @@ Response `200`:
   "location": "Tầng 3, khối A",
   "description": "Cập nhật phạm vi phòng",
   "isActive": true,
-  "updatedById": "44444444-aaaa-bbbb-cccc-444444444444",
+  "updatedByUserId": "44444444-aaaa-bbbb-cccc-444444444444",
   "updatedAt": "2026-09-13T09:00:00Z",
   "rowVersion": "AAAAAAAAB9E="
 }
@@ -365,7 +365,7 @@ Validation/lỗi:
 - `409 construction_object.cycle_detected`: tạo chu trình.
 - `409 construction_object.concurrency_conflict`: rowVersion cũ.
 
-Cho phép đổi `ObjectType` chỉ khi Object active, là leaf, chưa có Inspection/Checklist/RFI, type mới hợp lệ với parent, không phá hierarchy, actor là Administrator và rowVersion hợp lệ. Trong slice hiện tại kiểm tra leaf và parent compatibility; khi ba module nghiệp vụ được bổ sung, Handler phải mở rộng kiểm tra related records. Project có child không thể đổi type.
+`ObjectType` là bất biến sau khi Construction Object được tạo. Request update vẫn gửi `objectType` để contract rõ ràng, nhưng giá trị phải trùng với loại hiện tại; mọi yêu cầu đổi loại trả `409 construction_object.object_type_immutable`, kể cả khi Object là leaf hoặc chưa có hồ sơ nghiệp vụ.
 
 ### 6.5 `POST /api/construction-objects/{id}/deactivate`
 
@@ -387,7 +387,7 @@ Response `200`:
 {
   "id": "6e20ece6-66ef-4b31-b136-738241ccb17d",
   "isActive": false,
-  "updatedById": "44444444-aaaa-bbbb-cccc-444444444444",
+  "updatedByUserId": "44444444-aaaa-bbbb-cccc-444444444444",
   "updatedAt": "2026-09-13T09:15:00Z",
   "rowVersion": "AAAAAAAAB9I="
 }
@@ -399,7 +399,7 @@ Lỗi:
 - `401`: chưa xác thực.
 - `403`: không phải Administrator.
 - `404`: Object không tồn tại/ngoài scope.
-- `409 construction_object.active_children_exist`: còn direct child active.
+- `409 construction_object.active_descendants_exist`: còn descendant active ở bất kỳ cấp nào.
 - `409 construction_object.already_inactive`: đã inactive; không coi thao tác lặp là thành công ngầm.
 - `409 construction_object.concurrency_conflict`: rowVersion cũ.
 
@@ -410,8 +410,8 @@ Hồ sơ nghiệp vụ đã có không ngăn deactivate và không bị sửa/x�
 | Request | Trách nhiệm Handler |
 |---|---|
 | `CreateConstructionObjectCommand` | Authorize Admin; normalize code; kiểm tra duplicate/parent active/type; tạo aggregate với audit UTC; save và trả DTO |
-| `UpdateConstructionObjectCommand` | Authorize; tải aggregate; kiểm tra rowVersion, duplicate, parent/type/cycle; cập nhật audit; save transaction |
-| `DeactivateConstructionObjectCommand` | Authorize; kiểm tra active, rowVersion và active child; deactivate/audit; save |
+| `UpdateConstructionObjectCommand` | Authorize; tải aggregate; kiểm tra rowVersion, ObjectType bất biến, duplicate, parent/type/cycle; cập nhật audit; save transaction |
+| `DeactivateConstructionObjectCommand` | Authorize; kiểm tra active, rowVersion và mọi active descendant; deactivate/audit; save |
 | `GetConstructionObjectsQuery` | Áp dụng scope theo role, validate filter/sort, project trang DTO bằng read service |
 | `GetConstructionObjectDetailQuery` | Áp dụng scope trước lookup, project detail và breadcrumb; không trả entity graph |
 
@@ -426,7 +426,7 @@ IConstructionObjectRepository
   GetForUpdateAsync(id)
   CodeExistsAsync(normalizedCode, excludingId?)
   GetParentSnapshotAsync(id)
-  HasActiveChildrenAsync(id)
+  HasActiveDescendantsAsync(id)
   Add(entity)
 
 IConstructionObjectReadService
@@ -459,7 +459,7 @@ Không `Include` toàn bộ cây và không load toàn bộ records để phân 
 - Breadcrumb chỉ đọc chuỗi từ root đến Object hiện tại; dùng visited set/safety cap như cycle check.
 - Direct children được lấy qua list `parentId` để có pagination.
 - Kiểm tra đổi parent đi theo ancestor của candidate parent, không load toàn bộ descendants của node đang chuyển.
-- Deactivate chỉ cần query `AnyAsync(child => child.ParentId == id && child.IsActive)`.
+- Deactivate duyệt descendants có giới hạn và visited set qua projection nhỏ, rồi từ chối nếu bất kỳ descendant nào đang active.
 
 Stored procedure/recursive CTE chưa cần cho MVP nếu độ sâu nhỏ. Chỉ thay chiến lược sau profiling hoặc khi quyết định cho phép cây sâu/tùy ý.
 
@@ -471,7 +471,7 @@ Stored procedure/recursive CTE chưa cần cho MVP nếu độ sâu nhỏ. Chỉ
 | 401 | Chưa đăng nhập hoặc token không hợp lệ |
 | 403 | Đã nhìn thấy phạm vi nhưng sai role hành động; yêu cầu inactive filter không được phép |
 | 404 | Object/parent không tồn tại hoặc ngoài scope |
-| 409 | Duplicate code, parent inactive, cycle, active child, invalid state hoặc concurrency |
+| 409 | Duplicate code, parent inactive, cycle, đổi ObjectType, active descendant, invalid state hoặc concurrency |
 | 500 | Lỗi không dự kiến; thông báo chung và trace/correlation ID |
 
 ProblemDetails mẫu:
@@ -502,9 +502,9 @@ Table: `ConstructionObjects`.
 | `Location` | `nvarchar(500)` | NULL |
 | `Description` | `nvarchar(2000)` | NULL |
 | `IsActive` | `bit` | NOT NULL, default 1 |
-| `CreatedById` | `uniqueidentifier` | NOT NULL, FK `AspNetUsers.Id` |
+| `CreatedByUserId` | `uniqueidentifier` | NOT NULL, FK `AspNetUsers.Id` |
 | `CreatedAt` | `datetime2(7)` | NOT NULL, UTC |
-| `UpdatedById` | `uniqueidentifier` | NULL, FK `AspNetUsers.Id` |
+| `UpdatedByUserId` | `uniqueidentifier` | NULL, FK `AspNetUsers.Id` |
 | `UpdatedAt` | `datetime2(7)` | NULL, UTC |
 | `RowVersion` | `rowversion` | NOT NULL, concurrency token |
 
@@ -616,15 +616,15 @@ sequenceDiagram
     Db->>SQL: SELECT
     SQL-->>Handler: Aggregate + RowVersion
     Handler->>Handler: Authorize + state + concurrency
-    Handler->>Repo: HasActiveChildrenAsync(id)
-    Repo->>Db: Any active direct child
+    Handler->>Repo: HasActiveDescendantsAsync(id)
+    Repo->>Db: Traverse descendants with visited set and safety cap
     Db->>SQL: SELECT EXISTS
     SQL-->>Handler: true/false
-    alt Has active child
+    alt Has active descendant
         Handler-->>MediatR: Conflict
         MediatR-->>API: ProblemDetails
         API-->>Client: 409
-    else No active child
+    else No active descendant
         Handler->>Handler: Deactivate + audit UTC
         Handler->>Db: SaveChangesAsync
         Db->>SQL: UPDATE WHERE RowVersion matches
@@ -643,7 +643,8 @@ sequenceDiagram
 - Trim và normalize Code thành uppercase invariant.
 - Từ chối Code/Name rỗng; kiểm tra Code dài 2–100 và đúng character allowlist.
 - Create đặt active/audit UTC đúng.
-- Update thay đổi field được phép, `UpdatedById` và `UpdatedAt` đúng.
+- Update thay đổi field được phép, `UpdatedByUserId` và `UpdatedAt` đúng.
+- Mọi yêu cầu thay đổi `ObjectType` đều bị từ chối.
 - Self-parent bị từ chối ở invariant phù hợp.
 - Deactivate chuyển `IsActive` thành false và cập nhật audit.
 - Deactivate lặp bị từ chối nếu quy tắc `already_inactive` được duyệt.
@@ -658,7 +659,7 @@ sequenceDiagram
 - Candidate lineage chứa current object trả cycle conflict.
 - Existing corrupt cycle được phát hiện bằng visited set và không lặp vô hạn.
 - Depth lớn hơn 5 trả conflict; safety cap 32 hoạt động.
-- Active child ngăn deactivate; inactive child không ngăn.
+- Active descendant trực tiếp hoặc gián tiếp đều ngăn deactivate; chỉ descendants inactive không ngăn.
 - Inspector/Reviewer/Manager không thể create/update/deactivate.
 - Inspector/Reviewer không thể query inactive.
 - RowVersion cũ/DbUpdateConcurrency map thành 409.
@@ -676,7 +677,7 @@ sequenceDiagram
 - Duplicate Code khác casing trả `409`.
 - Hai update dùng cùng rowVersion: một thành công, một `409`.
 - Self-parent/cycle trả `409`; concurrent parent moves không tạo cycle.
-- Deactivate có active child trả `409`.
+- Deactivate có active descendant trực tiếp hoặc gián tiếp trả `409`.
 - Deactivate có hồ sơ lịch sử không xóa/cascade dữ liệu.
 - Không có route/API `DELETE`; request DELETE nhận `405` hoặc `404` theo routing convention đã khóa.
 - Response chỉ có DTO, rowVersion Base64 và không lộ Entity/Identity fields.
@@ -690,7 +691,7 @@ Integration test database phải là SQL Server test riêng, không dùng `Const
 - Chỉ Administrator có write/deactivate; read scope của bốn role đúng.
 - Code normalization/uniqueness đúng cả application và database.
 - Parent active, self-parent, cycle detection và concurrent reparenting được kiểm thử.
-- Deactivate không cho active child và không làm mất lịch sử.
+- Deactivate không cho active descendant và không làm mất lịch sử.
 - Pagination/search/filter/sort whitelist hoạt động, query `AsNoTracking` và project DTO.
 - RowVersion round-trip và conflict `409` hoạt động.
 - ProblemDetails tuân thủ `400/401/403/404/409/500` và không lộ dữ liệu ngoài scope.
@@ -702,13 +703,13 @@ Integration test database phải là SQL Server test riêng, không dùng `Const
 ## 14. Các quyết định đã chốt
 
 1. ObjectType là enum Domain, lưu string; không có lookup table.
-2. Project là root; Building dưới Project; Floor dưới Building; Room dưới Floor; WorkItem dưới bất kỳ type không phải WorkItem và luôn là leaf.
+2. Hierarchy bắt buộc tuyến tính: Project là root; Building dưới Project; Floor dưới Building; Room dưới Floor; WorkItem chỉ dưới Room và luôn là leaf.
 3. Administrator nhập Code; server trim, uppercase invariant và kiểm tra unique case-insensitive; không tự sinh Code.
 4. Không reactivate trong MVP.
 5. Detail trả metadata, parent rút gọn, breadcrumb, `hasChildren`, `directChildrenCount` và rowVersion; children tải qua list.
 6. Breadcrumb đầy đủ từ Project đến Object hiện tại, tối đa năm node, có visited set và safety cap 32.
-7. Chỉ active child ngăn deactivate parent; không cascade trạng thái.
+7. Bất kỳ active descendant trực tiếp hoặc gián tiếp đều ngăn deactivate parent; không cascade trạng thái.
 8. `MaximumHierarchyDepth = 5` là constant, không nằm trong appsettings.
 9. Không có tree endpoint; frontend lazy-load qua `parentId`.
-10. Chỉ đổi ObjectType khi active, leaf, chưa có hồ sơ, compatible với parent, đúng role và rowVersion.
-11. Audit dùng thống nhất `CreatedById`, `CreatedAt`, `UpdatedById`, `UpdatedAt`; FK Identity dùng Restrict/NoAction.
+10. `ObjectType` bất biến sau khi tạo; mọi yêu cầu đổi loại đều bị từ chối.
+11. Audit dùng thống nhất `CreatedByUserId`, `CreatedAt`, `UpdatedByUserId`, `UpdatedAt`; FK Identity dùng Restrict/NoAction.
