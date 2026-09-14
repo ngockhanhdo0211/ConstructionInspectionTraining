@@ -1,7 +1,9 @@
 using ConstructionInspection.Application.Common.Interfaces;
+using ConstructionInspection.Application.ConstructionObjects.Interfaces;
 using ConstructionInspection.Infrastructure.Authentication;
 using ConstructionInspection.Infrastructure.Identity;
 using ConstructionInspection.Infrastructure.Persistence;
+using ConstructionInspection.Infrastructure.Time;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -50,6 +52,10 @@ public static class DependencyInjection
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddSingleton<ITokenService, TokenService>();
         services.AddScoped<DevelopmentIdentitySeeder>();
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddScoped<IConstructionObjectRepository, ConstructionObjectRepository>();
+        services.AddScoped<IConstructionObjectReadService, ConstructionObjectReadService>();
+        services.AddScoped<IUnitOfWork, EfUnitOfWork>();
 
         return services;
     }

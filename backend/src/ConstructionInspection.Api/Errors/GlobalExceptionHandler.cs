@@ -1,4 +1,5 @@
 using ConstructionInspection.Application.Common.Exceptions;
+using ConstructionInspection.Domain.ConstructionObjects;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,26 @@ public sealed class GlobalExceptionHandler(
                 Title = "Authentication failed",
                 Detail = "Invalid email or password."
             },
+            ForbiddenAccessException => CreateProblem(
+                StatusCodes.Status403Forbidden,
+                "Access forbidden",
+                exception.Message,
+                "authorization.forbidden"),
+            ResourceNotFoundException notFound => CreateProblem(
+                StatusCodes.Status404NotFound,
+                "Resource not found",
+                notFound.Message,
+                notFound.Code),
+            ConflictException conflict => CreateProblem(
+                StatusCodes.Status409Conflict,
+                "Construction Object conflict",
+                conflict.Message,
+                conflict.Code),
+            ConstructionObjectDomainException domain => CreateProblem(
+                StatusCodes.Status409Conflict,
+                "Construction Object conflict",
+                domain.Message,
+                domain.Code),
             _ => new ProblemDetails
             {
                 Status = StatusCodes.Status500InternalServerError,
@@ -46,6 +67,22 @@ public sealed class GlobalExceptionHandler(
             ProblemDetails = problem,
             Exception = exception
         });
+    }
+
+    private static ProblemDetails CreateProblem(
+        int status,
+        string title,
+        string detail,
+        string code)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            Title = title,
+            Detail = detail
+        };
+        problem.Extensions["code"] = code;
+        return problem;
     }
 
     private static HttpValidationProblemDetails CreateValidationProblem(

@@ -41,6 +41,8 @@ public sealed class GetCurrentUserQueryHandlerTests
     private sealed class StubCurrentUser(Guid? userId) : ICurrentUser
     {
         public Guid? UserId { get; } = userId;
+        public IReadOnlyCollection<string> Roles => [];
+        public bool IsInRole(string role) => false;
     }
 
     private sealed class StubIdentityService(UserProfile? user) : IIdentityService

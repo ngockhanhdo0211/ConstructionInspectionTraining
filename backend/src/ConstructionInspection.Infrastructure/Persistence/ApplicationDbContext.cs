@@ -1,4 +1,5 @@
 using ConstructionInspection.Application.Common.Authorization;
+using ConstructionInspection.Domain.ConstructionObjects;
 using ConstructionInspection.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -10,6 +11,7 @@ public sealed class ApplicationDbContext(
     DbContextOptions<ApplicationDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
+    public DbSet<ConstructionObject> ConstructionObjects => Set<ConstructionObject>();
     private static readonly Guid InspectorRoleId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ReviewerRoleId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid ManagerRoleId = Guid.Parse("33333333-3333-3333-3333-333333333333");
@@ -18,6 +20,8 @@ public sealed class ApplicationDbContext(
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        builder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
         builder.Entity<ApplicationUser>(user =>
         {
