@@ -1,0 +1,10 @@
+/* Hallmark · macrostructure: Workbench · theme: Cobalt · token-locked */
+@import "../tokens.css";
+* { box-sizing: border-box; }
+html, body { margin: 0; min-width: 320px; min-height: 100%; overflow-x: clip; }
+body { background: var(--color-paper); color: var(--color-text); font-family: var(--font-body); font-size: var(--text-base); line-height: 1.55; }
+button, input { font: inherit; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }

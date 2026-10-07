@@ -56,3 +56,11 @@ Desktop.ini
 *.temp
 *.log
 ~$*
+# Frontend dependencies and output
+frontend/node_modules/
+frontend/dist/
+
+# Local object-storage and upload staging data
+.minio-data/
+.object-storage/
+*.upload.tmp

@@ -2,6 +2,7 @@ using ConstructionInspection.Application.Common.Exceptions;
 using ConstructionInspection.Application.Common.Interfaces;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using ConstructionInspection.Domain.Drawings;
 
 namespace ConstructionInspection.Infrastructure.Persistence;
 
@@ -13,8 +14,15 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
         {
             await context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateConcurrencyException exception)
         {
+            if (exception.Entries.Any(entry => entry.Entity is DrawingDocument))
+            {
+                throw new ConflictException(
+                    "drawing.concurrency_conflict",
+                    "The Drawing metadata was changed by another request.");
+            }
+
             throw new ConflictException(
                 "construction_object.concurrency_conflict",
                 "The Construction Object was changed by another request.");
@@ -22,6 +30,13 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
         catch (DbUpdateException exception)
             when (exception.InnerException is SqlException { Number: 2601 or 2627 })
         {
+            if (exception.Entries.Any(entry => entry.Entity is DrawingDocument))
+            {
+                throw new ConflictException(
+                    "drawing.storage_key_conflict",
+                    "The generated Drawing storage key conflicts with an existing record.");
+            }
+
             throw new ConflictException(
                 "construction_object.code_duplicate",
                 "A Construction Object with this Code already exists.");

@@ -102,6 +102,81 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ConstructionInspection.Domain.Drawings.DrawingDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("PageCount")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("char(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("Sha256")
+                        .HasDatabaseName("IX_DrawingDocuments_Sha256");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DrawingDocuments_StorageKey");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("IX_DrawingDocuments_Status_CreatedAt");
+
+                    b.ToTable("DrawingDocuments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DrawingDocuments_Status", "[Status] IN ('Uploading','Ready','Failed')");
+                        });
+                });
+
             modelBuilder.Entity("ConstructionInspection.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -366,6 +441,15 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UpdatedByUserId")
                         .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Drawings.DrawingDocument", b =>
+                {
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>

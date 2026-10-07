@@ -1,0 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
+import { Link, useParams } from 'react-router-dom'
+import { getDrawing } from '../api/client'
+import { drawingErrorMessage, formatBytes } from './DrawingsPage'
+
+export function DrawingDetailPage() { const { id = '' } = useParams(); const query = useQuery({ queryKey: ['drawing', id], queryFn: () => getDrawing(id) }); if (query.isLoading) return <p className="state">Đang tải Drawing…</p>; if (query.isError) return <p className="state error" role="alert">{drawingErrorMessage(query.error, 'Không thể tải Drawing.')}</p>; if (!query.data) return <p className="state error">Không tìm thấy Drawing.</p>; const d = query.data; return <><Link className="back-link" to="/drawings">← Danh sách Drawing</Link><header className="page-head detail"><div><p className="kicker">Drawing detail</p><h1>{d.originalFileName}</h1></div><span className={`status ${d.status.toLowerCase()}`}>{d.status}</span></header><dl className="detail-grid"><div><dt>Số trang</dt><dd>{d.pageCount}</dd></div><div><dt>Dung lượng</dt><dd>{formatBytes(d.fileSize)}</dd></div><div><dt>Content type</dt><dd>{d.contentType}</dd></div><div><dt>Ngày tạo</dt><dd>{new Date(d.createdAt).toLocaleString('vi-VN')}</dd></div><div className="wide"><dt>SHA-256</dt><dd className="hash">{d.sha256}</dd></div></dl></> }

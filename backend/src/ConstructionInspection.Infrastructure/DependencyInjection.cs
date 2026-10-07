@@ -1,9 +1,14 @@
 using ConstructionInspection.Application.Common.Interfaces;
 using ConstructionInspection.Application.ConstructionObjects.Interfaces;
+using ConstructionInspection.Application.Drawings.Interfaces;
 using ConstructionInspection.Infrastructure.Authentication;
 using ConstructionInspection.Infrastructure.Identity;
 using ConstructionInspection.Infrastructure.Persistence;
 using ConstructionInspection.Infrastructure.Time;
+using ConstructionInspection.Infrastructure.Pdf;
+using ConstructionInspection.Infrastructure.Storage;
+using Minio;
+using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -55,6 +60,26 @@ public static class DependencyInjection
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IConstructionObjectRepository, ConstructionObjectRepository>();
         services.AddScoped<IConstructionObjectReadService, ConstructionObjectReadService>();
+        services.AddScoped<IDrawingDocumentRepository, DrawingDocumentRepository>();
+        services.AddScoped<IDrawingDocumentReadService, DrawingDocumentReadService>();
+        services.AddSingleton<IUploadStagingStore, TemporaryFileStagingStore>();
+        services.AddSingleton<IPdfMetadataReader, PdfSharpMetadataReader>();
+        services.AddOptions<ObjectStorageOptions>()
+            .Bind(configuration.GetSection(ObjectStorageOptions.SectionName))
+            .Validate(x => !string.IsNullOrWhiteSpace(x.Endpoint), "Object storage endpoint is required.")
+            .Validate(x => !string.IsNullOrWhiteSpace(x.AccessKey), "Object storage access key is required.")
+            .Validate(x => !string.IsNullOrWhiteSpace(x.SecretKey), "Object storage secret key is required.")
+            .Validate(x => !string.IsNullOrWhiteSpace(x.BucketName), "Object storage bucket name is required.");
+        services.AddSingleton<IMinioClient>(provider =>
+        {
+            var value = provider.GetRequiredService<IOptions<ObjectStorageOptions>>().Value;
+            var endpoint = new Uri(value.Endpoint, UriKind.Absolute);
+            var builder = new MinioClient().WithEndpoint(endpoint.Host, endpoint.Port)
+                .WithCredentials(value.AccessKey, value.SecretKey);
+            if (value.UseSsl) builder = builder.WithSSL();
+            return builder.Build();
+        });
+        services.AddSingleton<IObjectStorage, MinioObjectStorage>();
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
 
         return services;

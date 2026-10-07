@@ -1,5 +1,6 @@
 using ConstructionInspection.Application.Common.Exceptions;
 using ConstructionInspection.Domain.ConstructionObjects;
+using ConstructionInspection.Domain.Drawings;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,8 @@ public sealed class GlobalExceptionHandler(
         var problem = exception switch
         {
             ValidationException validationException => CreateValidationProblem(validationException),
+            PayloadTooLargeException => CreateProblem(413, "Upload too large", exception.Message, "drawing.payload_too_large"),
+            UnsupportedMediaTypeException => CreateProblem(415, "Unsupported PDF", exception.Message, "drawing.unsupported_media_type"),
             AuthenticationFailedException => new ProblemDetails
             {
                 Status = StatusCodes.Status401Unauthorized,
@@ -37,7 +40,7 @@ public sealed class GlobalExceptionHandler(
                 notFound.Code),
             ConflictException conflict => CreateProblem(
                 StatusCodes.Status409Conflict,
-                "Construction Object conflict",
+                "Resource conflict",
                 conflict.Message,
                 conflict.Code),
             ConstructionObjectDomainException domain => CreateProblem(
@@ -45,6 +48,7 @@ public sealed class GlobalExceptionHandler(
                 "Construction Object conflict",
                 domain.Message,
                 domain.Code),
+            DrawingDocumentDomainException drawing => CreateProblem(409, "Drawing conflict", drawing.Message, drawing.Code),
             _ => new ProblemDetails
             {
                 Status = StatusCodes.Status500InternalServerError,

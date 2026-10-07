@@ -3,19 +3,21 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using ConstructionInspection.Infrastructure.Identity;
 using ConstructionInspection.Infrastructure.Persistence;
+using ConstructionInspection.Application.Drawings.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace ConstructionInspection.IntegrationTests.ConstructionObjects;
 
 public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program>
 {
     private const string ExpectedDatabaseName = "ConstructionInspectionIntegrationTestDb";
-    private readonly SemaphoreSlim _resetLock = new(1, 1);
+    private static readonly SemaphoreSlim DatabaseResetLock = new(1, 1);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -44,6 +46,14 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         builder.UseSetting("Jwt:SigningKey", signingKey);
         builder.UseSetting("Jwt:AccessTokenMinutes", "5");
         builder.UseSetting("SeedUsers:DefaultPassword", seedPassword);
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IObjectStorage>();
+            services.RemoveAll<IPdfMetadataReader>();
+            services.AddSingleton<FakeObjectStorage>();
+            services.AddSingleton<IObjectStorage>(provider => provider.GetRequiredService<FakeObjectStorage>());
+            services.AddSingleton<IPdfMetadataReader, FakePdfMetadataReader>();
+        });
     }
 
     public HttpClient CreateApiClient() => CreateClient(new WebApplicationFactoryClientOptions
@@ -53,7 +63,7 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
 
     public async Task ResetDatabaseAsync()
     {
-        await _resetLock.WaitAsync();
+        await DatabaseResetLock.WaitAsync();
         try
         {
             await using var scope = Services.CreateAsyncScope();
@@ -62,11 +72,33 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
             await context.Database.EnsureDeletedAsync();
             await context.Database.MigrateAsync();
             await scope.ServiceProvider.GetRequiredService<DevelopmentIdentitySeeder>().SeedAsync();
+            scope.ServiceProvider.GetRequiredService<FakeObjectStorage>().Reset();
         }
         finally
         {
-            _resetLock.Release();
+            DatabaseResetLock.Release();
         }
+    }
+
+    public sealed class FakeObjectStorage : IObjectStorage
+    {
+        private readonly Dictionary<string, byte[]> _objects = [];
+        public async Task UploadAsync(string key, Stream content, long length, string contentType, CancellationToken ct)
+        {
+            using var output = new MemoryStream();
+            await content.CopyToAsync(output, ct);
+            _objects[key] = output.ToArray();
+        }
+        public async Task CopyToAsync(string key, Stream destination, CancellationToken ct) =>
+            await destination.WriteAsync(_objects[key], ct);
+        public Task DeleteAsync(string key, CancellationToken ct) { _objects.Remove(key); return Task.CompletedTask; }
+        public Task<bool> ExistsAsync(string key, CancellationToken ct) => Task.FromResult(_objects.ContainsKey(key));
+        public void Reset() => _objects.Clear();
+    }
+
+    private sealed class FakePdfMetadataReader : IPdfMetadataReader
+    {
+        public Task<PdfMetadata> ReadAsync(Stream content, CancellationToken ct) => Task.FromResult(new PdfMetadata(2));
     }
 
     public async Task<string> LoginAsync(HttpClient client, string email)
