@@ -60,6 +60,9 @@ Desktop.ini
 frontend/node_modules/
 frontend/dist/
 
+# Frontend design-tool runtime artifacts
+frontend/.hallmark/*.json
+
 # Local object-storage and upload staging data
 .minio-data/
 .object-storage/
