@@ -10,7 +10,7 @@ Slice bao gồm 11 API Inspection đã thống nhất, trong đó hai API chỉ 
 
 ## 2. Kịch bản Inspection
 
-1. Inspector tạo Inspection cho một Construction Object và chọn đúng Form Template Version; Draft chưa gán Reviewer.
+1. Inspector tạo Inspection cho một Construction Object và chọn Form Template; server resolve latest Published version của template active và pin chính xác version đó. Draft chưa gán Reviewer.
 2. Hệ thống tạo revision 1 với JSON ban đầu, Business Process `Draft` và history khởi tạo.
 3. Inspector lưu Draft nhiều lần trên revision 1.
 4. Inspector chọn Reviewer rồi Submit; hệ thống validate dữ liệu theo schema, đặt `SubmittedAt`, `DueAt = SubmittedAt + 72 giờ` từ cấu hình, chuyển sang `Submitted`, ghi history và notification.
@@ -23,7 +23,7 @@ Slice bao gồm 11 API Inspection đã thống nhất, trong đó hai API chỉ 
 ## 3. Quy tắc nghiệp vụ
 
 - Chỉ Inspector có quyền và có access tới Construction Object mới được tạo Inspection.
-- Form Template và version phải đang sử dụng tại thời điểm tạo; Inspection luôn giữ FK tới đúng version đã chọn.
+- Form Template phải Active và có ít nhất một Published version tại thời điểm tạo. Server resolve Published version có `VersionNumber` lớn nhất và Inspection luôn giữ FK tới đúng version được server pin.
 - Inspection Number do server sinh khi Create theo `INS-{YEAR}-{SEQUENCE}` bằng SQL Server Sequence toàn hệ thống; frontend không gửi Number và không dùng `MAX + 1`.
 - Draft không có Reviewer. Inspector chọn Reviewer trong request Submit; chỉ khi transaction Submit thành công mới tạo assignment/work/notification.
 - Sau Submit, chỉ Manager hoặc Administrator có quyền phù hợp được reassign Reviewer; mọi reassign phải append ProcessHistory.
@@ -70,10 +70,10 @@ sequenceDiagram
     participant DB as SQL Server
     actor R as Reviewer
 
-    I->>UI: Chọn object và template version
+    I->>UI: Chọn object và Form Template
     UI->>API: POST /api/inspections
     API->>APP: CreateInspectionCommand
-    APP->>DB: TX: NEXT VALUE sequence + Inspection chưa reviewer + revision 1 + Process(Draft) + History
+    APP->>DB: TX: lock active template + resolve latest Published + NEXT VALUE sequence + Inspection pin version + revision 1 + Process(Draft) + History
     DB-->>APP: Commit
     APP-->>UI: 201 InspectionDetailDto
 
@@ -167,14 +167,14 @@ Request:
 ```json
 {
   "constructionObjectId": "cbab6f5d-0e7d-41ca-8510-fd8d00ea26e2",
-  "formTemplateVersionId": "dbbb9518-ce3b-45df-9c68-13e647a24f66",
+  "formTemplateId": "c39c58e4-745a-4cef-b5e2-aa0b52809a02",
   "title": "Kiểm tra an toàn điện phòng 301",
   "description": "Kiểm tra trước nghiệm thu",
   "data": {}
 }
 ```
 
-Response `201 Created`: `InspectionDetailDto` như mẫu chung; header `Location: /api/inspections/{id}`. Server sinh `number`, tạo Inspection chưa có Reviewer, revision 1, process Draft và initial history trong một transaction.
+Response `201 Created`: `InspectionDetailDto` như mẫu chung; header `Location: /api/inspections/{id}`. Server kiểm tra template active, resolve Published version có `VersionNumber` lớn nhất, pin chính xác `FormTemplateVersionId`, sinh `number`, rồi tạo Inspection chưa có Reviewer, revision 1, process Draft và initial history trong một transaction. Không fallback sang Draft hoặc Published version cũ; template không có Published version phù hợp trả `409 inspection.form_template_unavailable`.
 
 ### 7.2 `PUT /api/inspections/{id}/draft` — lưu Draft
 
@@ -439,7 +439,7 @@ Endpoint chỉ đọc, không trả API update/delete cho revision đã Submit.
 | GET `/{id}/revisions` | GetInspectionRevisionsQuery | GetInspectionRevisionsQueryValidator | InspectionRevisionListDto |
 | GET `/{id}/revisions/{revisionNumber}` | GetInspectionRevisionDetailQuery | GetInspectionRevisionDetailQueryValidator | InspectionRevisionDetailDto |
 
-Validator kiểm tra hình dạng/độ dài/range/JSON syntax. Handler/domain kiểm tra dữ liệu tồn tại, quyền theo object, ownership, assignment, self-approval, trạng thái, schema và concurrency.
+Validator kiểm tra hình dạng/độ dài/range/JSON syntax. Với Create, request nhận `FormTemplateId`, không nhận version ID do client chọn. Handler/domain kiểm tra dữ liệu tồn tại, template active, latest Published version, quyền theo object, ownership, assignment, self-approval, trạng thái, schema và concurrency.
 
 ## 9. Trách nhiệm từng layer
 
@@ -472,6 +472,17 @@ Validator kiểm tra hình dạng/độ dài/range/JSON syntax. Handler/domain k
 
 - Page/list/detail/form, route guard mang tính UX, FormIO renderer và React Query hooks.
 - Server vẫn là nguồn sự thật cho quyền/trạng thái; frontend xử lý ProblemDetails/concurrency.
+
+## 9.1 Transaction Create Inspection
+
+Trong một transaction database:
+
+1. Kiểm tra current user là Inspector và Construction Object thuộc scope, đang active.
+2. Lock/read Form Template theo thứ tự ổn định; yêu cầu template `Active`.
+3. Resolve version `Published` có `VersionNumber` lớn nhất. Không nhận version ID từ client, không fallback sang Draft hoặc Published version cũ; không có version phù hợp trả `409 inspection.form_template_unavailable`.
+4. Cấp Inspection Number từ SQL Server Sequence, không dùng `MAX + 1`.
+5. Tạo Inspection và pin chính xác `FormTemplateVersionId` vừa resolve; tạo revision 1, BusinessProcess `Draft` và initial ProcessHistory.
+6. `SaveChangesAsync` và commit. Bất kỳ lỗi nào rollback toàn bộ; publish version mới hoặc deactivate template sau commit không thay đổi version đã pin.
 
 ## 10. Transaction Submit Inspection
 
@@ -534,7 +545,7 @@ Mã `code` ổn định để frontend xử lý, ví dụ `validation.failed`, `
 ## 13. Frontend flow
 
 - `/inspections`: Ant Design table; filter/search/sort/pagination nằm trong URL; React Query key chứa toàn bộ tham số.
-- `/inspections/new`: chọn Construction Object và active Form Template Version; chưa chọn/gán Reviewer, tạo xong điều hướng detail/edit.
+- `/inspections/new`: chọn Construction Object và active Form Template; server tự resolve latest Published version, chưa chọn/gán Reviewer, tạo xong điều hướng detail/edit.
 - `/inspections/:id`: header trạng thái, metadata, FormIO renderer, revision metadata, timeline history và action bar theo capability từ trạng thái/current user.
 - Draft/Recheck: FormIO editable với nút Manual Save rõ ràng; không autosave. Route guard/browser prompt cảnh báo khi rời trang có thay đổi chưa lưu.
 - Save Draft gửi rowVersions mới nhất; thành công phải thay toàn bộ rowVersion cũ trong React Query/form state.
@@ -551,6 +562,7 @@ Mã `code` ổn định để frontend xử lý, ví dụ `validation.failed`, `
 ### Domain/application rule
 
 - Create tạo revision 1, process Draft và current pointer chính xác.
+- Create từ `FormTemplateId` resolve đúng latest Published của template active và pin `FormTemplateVersionId`; từ chối template inactive, không có Published version, Draft-only và mọi yêu cầu chọn version cũ.
 - Save Draft cập nhật revision chưa Submit mà không tạo revision mới.
 - Save lần đầu sau Recheck copy revision cũ thành revision N+1; lần sau không tạo thêm.
 - Revision cũ và submitted revision không thể sửa.
@@ -572,6 +584,8 @@ Dùng fake clock/current user và mock abstraction ở Application; không mock 
 
 - Chạy với SQL Server tương thích production để kiểm tra transaction, rowversion, constraint và EF mapping; lựa chọn môi trường test cần xác nhận.
 - API happy path đầy đủ: Create → Draft → Submit → Start Review → Recheck → Draft revision 2 → Submit → Start Review → Approve.
+- Create pin latest Published version; publish version mới hoặc deactivate template sau đó không đổi version/schema của Inspection đã tồn tại.
+- Create không fallback sang Draft hay Published version cũ khi latest Published không hợp lệ; trả `409 inspection.form_template_unavailable`.
 - Sau Recheck, assert revision 1 không đổi và history review chỉ đúng revision.
 - Revision list không trả DataJson; revision detail trả đúng immutable DataJson và áp dụng 404 ngoài scope.
 - Hai request Create đồng thời nhận Number khác nhau; chấp nhận gap nhưng không trùng.

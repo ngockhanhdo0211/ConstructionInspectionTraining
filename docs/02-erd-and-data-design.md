@@ -2,13 +2,13 @@
 
 ## 1. Mục đích và nguyên tắc
 
-Tài liệu mô tả 16 bảng lõi logic của MVP và các bảng hạ tầng do ASP.NET Core Identity quản lý. Ba khái niệm logic Users/Roles/UserRoles được triển khai trực tiếp bằng `AspNetUsers`, `AspNetRoles`, `AspNetUserRoles`; không tạo thêm bộ bảng auth thủ công trùng lặp. Identity có thể cần các bảng chuẩn phụ trợ Claims/Logins/Tokens khi EF mapping được tạo. Kiểu dữ liệu dùng cú pháp SQL Server để làm cơ sở mapping EF Core; đây chưa phải migration hay DDL chính thức.
+Tài liệu mô tả 16 bảng nghiệp vụ lõi logic của danh mục 43 Use Case ban đầu và các bảng hạ tầng do ASP.NET Core Identity quản lý. Ba khái niệm logic Users/Roles/UserRoles được triển khai trực tiếp bằng `AspNetUsers`, `AspNetRoles`, `AspNetUserRoles`; không tạo thêm bộ bảng auth thủ công trùng lặp. Identity có thể cần các bảng chuẩn phụ trợ Claims/Logins/Tokens khi EF mapping được tạo. Physical schema hiện còn có `DrawingDocuments` từ Drawing Slice 1, được mô tả tại docs/06; bảng này chưa được cộng vào thuật ngữ “16 bảng nghiệp vụ lõi” vì Drawing chưa được tự gán thêm UC ID vào danh mục 43 Use Case. Kiểu dữ liệu dùng cú pháp SQL Server để làm cơ sở mapping EF Core; đây chưa phải migration hay DDL chính thức.
 
 Các nguyên tắc:
 
 - `ConstructionObjects` là trục liên kết nghiệp vụ và dùng `ParentId` để tạo cây; chưa tạo bảng Project.
 - Ba module Inspection, Checklist và RFI dùng chung `BusinessProcesses` và `ProcessHistories`.
-- Form template có version bất biến sau khi được sử dụng.
+- Form Template có lifecycle `Active → Inactive`; mỗi template tối đa một Draft. Form Template Version có lifecycle `Draft → Published`, và Published version bất biến ngay khi publish.
 - Inspection giữ toàn bộ revision trong `InspectionSubmissions` và xác định duy nhất revision hiện tại.
 - Checklist–Inspection là quan hệ nhiều-nhiều, chỉ được liên kết khi cùng Construction Object.
 - RFI response chỉ thêm mới, không ghi đè câu trả lời cũ.
@@ -147,11 +147,17 @@ Application phải chặn self-parent và chu trình tổ tiên. Project có th�
 | Code | nvarchar(50) | NN, UQ |
 | Name | nvarchar(250) | NN |
 | Description | nvarchar(2000) | NULL |
-| IsActive | bit | NN, default 1 |
+| Status | varchar(20) | NN, enum `Active`, `Inactive`; default `Active` |
+| NextVersionNumber | int | NN, > 1; đặt 2 khi tạo Draft version 1 |
 | CreatedByUserId | uniqueidentifier | FK → AspNetUsers.Id, NN |
 | CreatedAt | datetime2(7) | NN |
+| UpdatedByUserId | uniqueidentifier | FK → AspNetUsers.Id, NULL |
 | UpdatedAt | datetime2(7) | NULL |
+| DeactivatedByUserId | uniqueidentifier | FK → AspNetUsers.Id, NULL; có giá trị khi Inactive |
+| DeactivatedAt | datetime2(7) | NULL; có giá trị khi Inactive |
 | RowVersion | rowversion | NN |
+
+`NextVersionNumber` là nguồn cấp số duy nhất khi tạo Draft mới. Application tăng counter trong cùng transaction có locking và rowversion/concurrency protection; không dùng `MAX(VersionNumber) + 1`. Updated audit cùng null/cùng có giá trị. Deactivated audit cùng null khi Active và cùng có giá trị khi Inactive. Mọi FK audit dùng `NoAction`.
 
 ### 4.6 `FormTemplateVersions`
 
@@ -160,12 +166,17 @@ Application phải chặn self-parent và chu trình tổ tiên. Project có th�
 | Id | uniqueidentifier | PK |
 | FormTemplateId | uniqueidentifier | FK → FormTemplates.Id, NN |
 | VersionNumber | int | NN, > 0 |
+| Status | varchar(20) | NN, enum `Draft`, `Published` |
 | SchemaJson | nvarchar(max) | NN, valid JSON; tối đa 1 MiB ở application |
 | CreatedByUserId | uniqueidentifier | FK → AspNetUsers.Id, NN |
 | CreatedAt | datetime2(7) | NN |
+| UpdatedByUserId | uniqueidentifier | FK → AspNetUsers.Id, NULL; chỉ dùng khi sửa Draft |
+| UpdatedAt | datetime2(7) | NULL; chỉ dùng khi sửa Draft |
+| PublishedByUserId | uniqueidentifier | FK → AspNetUsers.Id, NULL; bắt buộc khi Published |
+| PublishedAt | datetime2(7) | NULL; bắt buộc khi Published |
 | RowVersion | rowversion | NN |
 
-UQ `(FormTemplateId, VersionNumber)`. Khi đã có Inspection tham chiếu, schema/version không được update; muốn thay đổi phải thêm version.
+UQ `(FormTemplateId, VersionNumber)`. Filtered unique index trên `FormTemplateId WHERE Status = 'Draft'` bảo đảm tối đa một Draft. Database dùng `CHECK (ISJSON(SchemaJson) = 1)`, `CHECK (VersionNumber > 0)` và check status/audit consistency. Chỉ Draft được update/publish; Published bất biến, không delete/rollback/trở lại Draft. FK về template và audit user dùng `NoAction`; không cascade delete version lịch sử.
 
 ### 4.7 `Inspections`
 
@@ -187,6 +198,8 @@ UQ `(FormTemplateId, VersionNumber)`. Khi đã có Inspection tham chiếu, sche
 `CurrentSubmissionId` phải trỏ tới submission thuộc chính Inspection. Do vòng FK khi insert Inspection + revision 1, có thể cấu hình một phía FK ở database theo chiến lược migration được duyệt; invariant vẫn được kiểm tra trong transaction.
 
 `Number` không nhận từ frontend và không dùng `MAX + 1`. Database có sequence, ví dụ `InspectionNumberSequence`, cấp `NEXT VALUE FOR` an toàn khi đồng thời; application ghép năm UTC tại thời điểm tạo và sequence tối thiểu sáu chữ số. Sequence tăng toàn hệ thống, không reset theo ngày hoặc năm. Unique index trên `Number` là lớp bảo vệ cuối; khoảng trống sequence được chấp nhận.
+
+Khi tạo Inspection, client gửi `FormTemplateId`, không chọn `FormTemplateVersionId`. Server yêu cầu template Active, resolve Published version có `VersionNumber` lớn nhất và pin ID đó vào `Inspections.FormTemplateVersionId`. Không fallback sang Draft hoặc Published version cũ. Inspection đã tạo giữ nguyên version lịch sử kể cả khi publish version mới hoặc deactivate template.
 
 ### 4.8 `InspectionSubmissions`
 
@@ -363,7 +376,7 @@ Ngoài PK/UQ đã nêu:
 
 - Identity indexes chuẩn trên `AspNetUsers.NormalizedUserName`, `AspNetUsers.NormalizedEmail` và `AspNetRoles.NormalizedName`; thêm `(IsActive, DisplayName)`.
 - `ConstructionObjects(ParentId, IsActive, Name)`.
-- `FormTemplates(IsActive, Name)`; `FormTemplateVersions(FormTemplateId, VersionNumber DESC)`.
+- `FormTemplates(Status, Name)`; unique `FormTemplates(Code)`; `FormTemplateVersions(FormTemplateId, VersionNumber DESC)`; filtered unique `(FormTemplateId) WHERE Status='Draft'`; `(FormTemplateId, Status, VersionNumber DESC)` cho latest Published.
 - `Inspections(ConstructionObjectId, CreatedAt DESC)`, `(ReviewerUserId, CreatedAt DESC)`, `(CreatedByUserId, CreatedAt DESC)`.
 - `InspectionSubmissions(InspectionId, RevisionNumber DESC)` include `SubmittedAt`.
 - `Checklists(ConstructionObjectId, CreatedAt DESC)`, `(ReviewerUserId, CreatedAt DESC)`.
@@ -391,14 +404,14 @@ Index search text nâng cao/stored procedure chỉ thêm sau khi đo query plan;
 - `SchemaJson` chỉ chấp nhận FormIO Text Field, Text Area, Number, Select, Radio, Checkbox và Date/Time. Từ chối custom component, script, HTML có script, component thực thi code và file upload.
 - `DataJson` phải được validate theo đúng `FormTemplateVersionId` của Inspection khi Submit; không cho file, ảnh base64 hoặc payload lớn nhúng trực tiếp.
 - Không ghép JSON vào SQL động; tham số hóa toàn bộ query.
-- Schema version đã được Inspection tham chiếu là bất biến.
+- Mọi Published schema version đều bất biến. Inspection luôn validate bằng đúng `FormTemplateVersionId` đã được server pin khi tạo.
 - Thư viện/engine validation cụ thể vẫn cần được kiểm chứng; danh sách component và giới hạn trên đã được chốt.
 
 ## 10. Quy tắc xóa và bất biến dữ liệu
 
 - Không hard delete hồ sơ, revision, response, process, history hoặc notification đã phát sinh.
-- User, role, Construction Object và Form Template dùng `IsActive`; dữ liệu lịch sử vẫn giữ FK.
-- FormTemplateVersion đã dùng, InspectionSubmission đã Submit, RfiResponse và ProcessHistory là bất biến.
+- User, role và Construction Object dùng `IsActive`; Form Template dùng status `Active/Inactive`. Dữ liệu lịch sử vẫn giữ FK.
+- Published FormTemplateVersion, InspectionSubmission đã Submit, RfiResponse và ProcessHistory là bất biến.
 - `Approved`, `Rejected`, `Closed`, `Cancelled` là chỉ đọc. Rejected Inspection không reopen/sửa/submit lại; nếu cần làm lại thì tạo Inspection mới, chưa có liên kết hồ sơ cũ trong slice đầu.
 - Cascade delete không dùng cho dữ liệu nghiệp vụ; cấu hình `Restrict/NoAction` để tránh mất chuỗi truy vết.
 
@@ -418,7 +431,7 @@ Bất kỳ lỗi nào rollback toàn bộ. Side effect ngoài database (SignalR 
 
 Các transaction đặc biệt:
 
-- Tạo Inspection: Inspection + revision 1 + BusinessProcess Draft + initial history.
+- Tạo Inspection: lock/read template Active, resolve latest Published version, pin `FormTemplateVersionId`, rồi tạo Inspection + revision 1 + BusinessProcess Draft + initial history.
 - Lần sửa đầu sau Recheck: copy revision cũ thành revision mới, đổi current pointer, rồi lưu data.
 - Submit Inspection: submission + process + history + notification + reviewer assignment.
 - Liên kết ChecklistInspection: khóa/đọc hai aggregate, xác nhận cùng ConstructionObject rồi insert.
@@ -441,7 +454,7 @@ Chi tiết từng UC:
 
 - UC01–02 dùng ASP.NET Core Identity trên AspNetUsers/AspNetUserRoles/AspNetRoles; Login phát JWT access token, current-user đọc identity/roles.
 - UC03–07 đọc/ghi ConstructionObjects và kiểm tra cây/inactive.
-- UC08–11 đọc/ghi FormTemplates/FormTemplateVersions và quy tắc version bất biến.
+- UC08–11 đọc/ghi FormTemplates/FormTemplateVersions theo lifecycle Draft/Published, một Draft tối đa, counter `NextVersionNumber` và Published bất biến.
 - UC12–16 đọc/ghi Inspection/Submission/Process/History/Notification.
 - UC17–21 transition BusinessProcess, append History/Notification và theo dõi SubmissionId.
 - UC22 đọc ProcessHistories theo process của Inspection.

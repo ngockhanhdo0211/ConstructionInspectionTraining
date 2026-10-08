@@ -30,7 +30,7 @@ MVP ưu tiên tính đúng đắn nghiệp vụ, khả năng truy vết và ki�
 - Đăng nhập bằng tài khoản được seed sẵn qua ASP.NET Core Identity và JWT Bearer Access Token; xem tài khoản hiện tại.
 - Quản lý người dùng và role ở mức cần thiết cho phân quyền MVP.
 - Quản lý cây Construction Object.
-- Quản lý Form Template và các Form Template Version; lưu FormIO schema dạng JSON hợp lệ.
+- Quản lý Form Template và các Form Template Version theo lifecycle `Draft → Published`; lưu FormIO schema dạng JSON hợp lệ. Mỗi template có tối đa một Draft, còn Published version là bất biến.
 - Tạo, sửa, lưu Draft, Submit, review, Approve, Reject và Recheck Inspection.
 - Tạo Checklist, Checklist Item và ghi nhận `Pass`, `Fail`, `NotApplicable`, `NotChecked`.
 - Liên kết một Checklist với một hoặc nhiều Inspection cùng Construction Object.
@@ -161,9 +161,9 @@ Phiên bản framework và package chỉ được chốt sau khi kiểm tra SDK/
 | ID | Use Case | Actor chính | Kết quả mong đợi |
 |---|---|---|---|
 | UC08 | Xem danh sách | Administrator | Danh sách template và version liên quan. |
-| UC09 | Tạo từ FormIO schema | Administrator | Tạo template cùng version đầu tiên có `SchemaJson` hợp lệ. |
-| UC10 | Tạo phiên bản mới | Administrator | Thêm version bất biến; không ghi đè version đã được dùng. |
-| UC11 | Ngừng sử dụng | Administrator | Đánh dấu template inactive, bảo toàn các Inspection cũ. |
+| UC09 | Tạo từ FormIO schema | Administrator | Tạo template active cùng Draft version 1 có `SchemaJson` hợp lệ; Update Draft và Publish là các hành động con của UC09/UC10. |
+| UC10 | Tạo phiên bản mới | Administrator | Tạo Draft version mới khi chưa có Draft hiện hành; số version lấy từ `NextVersionNumber`, không dùng `MAX + 1`; Published version bất biến. |
+| UC11 | Ngừng sử dụng | Administrator | Chuyển template `Active → Inactive`, chặn Inspection/version/Draft/Publish mới nhưng bảo toàn toàn bộ Inspection và version lịch sử; không reactivate. |
 
 ### Inspection
 
@@ -171,7 +171,7 @@ Phiên bản framework và package chỉ được chốt sau khi kiểm tra SDK/
 |---|---|---|---|
 | UC12 | Xem danh sách | Actor có quyền | Danh sách đúng phạm vi với pagination/search/filter/sort. |
 | UC13 | Xem chi tiết | Actor liên quan | Xem revision hiện tại, process, assignment và dữ liệu cần thiết. |
-| UC14 | Tạo | Inspector | Server sinh Number; tạo Inspection chưa gán Reviewer, Business Process và revision 1. |
+| UC14 | Tạo | Inspector | Server sinh Number, resolve latest Published version của template active và pin chính xác version; tạo Inspection chưa gán Reviewer, Business Process và revision 1. |
 | UC15 | Lưu Draft | Inspector tạo hồ sơ | Cập nhật revision chưa Submit; sau Recheck, lần sửa đầu tạo revision mới. |
 | UC16 | Submit | Inspector tạo hồ sơ | Validate FormIO, chọn/gán Reviewer, đặt DueAt theo SLA, chuyển `Submitted`, ghi history/notification. |
 | UC17 | Reviewer nhận xử lý | Reviewer được giao | Chuyển `Submitted` sang `UnderReview`. |
@@ -291,7 +291,7 @@ Notification được lưu trong cùng transaction với transition. SignalR, kh
 
 - UC01–UC43 đã được triển khai và có tiêu chí chấp nhận/kiểm thử tương ứng.
 - Ba luồng trạng thái chỉ cho phép transition hợp lệ, ghi đầy đủ Process History và không tự duyệt.
-- Inspection bảo toàn đúng revision; template version đã dùng không bị ghi đè.
+- Inspection bảo toàn đúng revision và `FormTemplateVersionId` đã pin; mọi Published template version đều bất biến, không phụ thuộc đã được sử dụng hay chưa.
 - JSON schema/data được kiểm tra tính hợp lệ và dữ liệu FormIO được validate khi Submit.
 - API thực thi authorization, ownership/assignment và phạm vi Construction Object.
 - Các transition nguyên tử; lỗi rollback cả state, history và notification.
@@ -314,7 +314,7 @@ Các điểm còn cần xác nhận trước phần chức năng tương ứng:
 2. RFI assignee được chọn khi Submit hay qua thao tác riêng UC34; ai được quyền giao lại?
 3. Nội dung “bằng chứng” không phải file/base64 sẽ dùng URL tham chiếu hay chỉ text/field tiêu chuẩn?
 4. Administrator được xem toàn bộ nội dung hồ sơ hay chỉ metadata/cấu hình?
-5. Ngừng sử dụng Construction Object/Form Template có chặn tạo hồ sơ mới ngay lập tức không?
+5. Ngừng sử dụng Construction Object chặn tạo hồ sơ mới theo contract UC03–UC07; Form Template inactive đã chốt chặn Inspection/version/Draft/Publish mới ngay lập tức nhưng giữ lịch sử.
 6. Actor nào ngoài Inspector được phép tạo Checklist và ai được gán Reviewer cho Checklist?
 7. Actor có quyền hủy RFI ngoài người tạo là Reviewer, Manager hay Administrator?
 8. Dashboard cơ bản cần chỉ số nào ngoài số lượng theo trạng thái và quá hạn?
