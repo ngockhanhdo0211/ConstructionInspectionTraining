@@ -42,6 +42,12 @@ public sealed class DrawingDocumentReadService(ApplicationDbContext context) : I
             x.PageCount, x.Status, x.CreatedAt, x.CreatedByUserId, Convert.ToBase64String(x.RowVersion));
     }
 
+    public Task<DrawingContentDescriptor?> GetContentDescriptorAsync(Guid id, CancellationToken ct) =>
+        context.DrawingDocuments.AsNoTracking().Where(x => x.Id == id)
+            .Select(x => new DrawingContentDescriptor(x.Id, x.OriginalFileName, x.StorageKey, x.ContentType,
+                x.FileSize, x.Sha256, x.Status, x.CreatedAt))
+            .SingleOrDefaultAsync(ct);
+
     private sealed record Projection(Guid Id, string OriginalFileName, string ContentType, long FileSize,
         string Sha256, int PageCount, DrawingDocumentStatus Status, DateTime CreatedAt, Guid CreatedByUserId, byte[] RowVersion);
 }

@@ -83,6 +83,10 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
     public sealed class FakeObjectStorage : IObjectStorage
     {
         private readonly Dictionary<string, byte[]> _objects = [];
+        private readonly List<(long Offset, long Length)> _ranges = [];
+        public IReadOnlyList<(long Offset, long Length)> Ranges => _ranges;
+        public bool BlockCopies { get; set; }
+        public bool SawCancellation { get; private set; }
         public async Task UploadAsync(string key, Stream content, long length, string contentType, CancellationToken ct)
         {
             using var output = new MemoryStream();
@@ -93,7 +97,30 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
             await destination.WriteAsync(_objects[key], ct);
         public Task DeleteAsync(string key, CancellationToken ct) { _objects.Remove(key); return Task.CompletedTask; }
         public Task<bool> ExistsAsync(string key, CancellationToken ct) => Task.FromResult(_objects.ContainsKey(key));
-        public void Reset() => _objects.Clear();
+        public Task<ObjectStorageMetadata?> GetMetadataAsync(string key, CancellationToken ct) =>
+            Task.FromResult(_objects.TryGetValue(key, out var value)
+                ? new ObjectStorageMetadata(value.LongLength, new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero))
+                : null);
+        public async Task CopyRangeToAsync(string key, Stream destination, long offset, long length, CancellationToken ct)
+        {
+            _ranges.Add((offset, length));
+            if (BlockCopies)
+            {
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, ct); }
+                catch (OperationCanceledException) { SawCancellation = true; throw; }
+            }
+            if (!_objects.TryGetValue(key, out var value))
+                throw new ObjectStorageException("drawing.storage_object_missing", "The Drawing object is missing from storage.");
+            await destination.WriteAsync(value.AsMemory(checked((int)offset), checked((int)length)), ct);
+        }
+        public void RemoveAll() => _objects.Clear();
+        public void Reset()
+        {
+            _objects.Clear();
+            _ranges.Clear();
+            BlockCopies = false;
+            SawCancellation = false;
+        }
     }
 
     private sealed class FakePdfMetadataReader : IPdfMetadataReader

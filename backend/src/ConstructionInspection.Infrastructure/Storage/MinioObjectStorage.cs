@@ -1,4 +1,6 @@
 using ConstructionInspection.Application.Drawings.Interfaces;
+using Amazon.S3;
+using Amazon.S3.Model;
 using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel.Args;
@@ -6,7 +8,10 @@ using Minio.Exceptions;
 
 namespace ConstructionInspection.Infrastructure.Storage;
 
-public sealed class MinioObjectStorage(IMinioClient client, IOptions<ObjectStorageOptions> options) : IObjectStorage
+public sealed class MinioObjectStorage(
+    IMinioClient client,
+    IAmazonS3 s3Client,
+    IOptions<ObjectStorageOptions> options) : IObjectStorage
 {
     private string Bucket => options.Value.BucketName;
 
@@ -21,6 +26,64 @@ public sealed class MinioObjectStorage(IMinioClient client, IOptions<ObjectStora
     {
         await client.GetObjectAsync(new GetObjectArgs().WithBucket(Bucket).WithObject(key)
             .WithCallbackStream(async (source, token) => await source.CopyToAsync(destination, token)), cancellationToken);
+    }
+
+    public async Task<ObjectStorageMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var stat = await client.StatObjectAsync(
+                new StatObjectArgs().WithBucket(Bucket).WithObject(key), cancellationToken);
+            return new ObjectStorageMetadata(stat.Size, stat.LastModified);
+        }
+        catch (ObjectNotFoundException)
+        {
+            return null;
+        }
+        catch (MinioException exception)
+        {
+            throw new ObjectStorageException(
+                "drawing.storage_unavailable", "Object storage is unavailable.", exception);
+        }
+    }
+
+    public async Task CopyRangeToAsync(
+        string key,
+        Stream destination,
+        long offset,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await s3Client.GetObjectAsync(new GetObjectRequest
+            {
+                BucketName = Bucket,
+                Key = key,
+                ByteRange = new ByteRange(offset, offset + length - 1)
+            }, cancellationToken);
+            if (response.ContentLength != length)
+            {
+                throw new ObjectStorageException(
+                    "drawing.storage_inconsistent", "The Drawing object range does not match its metadata.");
+            }
+            await response.ResponseStream.CopyToAsync(destination, cancellationToken);
+        }
+        catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            throw new ObjectStorageException(
+                "drawing.storage_object_missing", "The Drawing object is missing from storage.", exception);
+        }
+        catch (AmazonS3Exception exception)
+        {
+            throw new ObjectStorageException(
+                "drawing.storage_unavailable", "Object storage is unavailable.", exception);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException and not ObjectStorageException)
+        {
+            throw new ObjectStorageException(
+                "drawing.storage_unavailable", "Object storage is unavailable.", exception);
+        }
     }
 
     public async Task DeleteAsync(string key, CancellationToken cancellationToken) =>

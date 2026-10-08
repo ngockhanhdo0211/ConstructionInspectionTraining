@@ -1,6 +1,8 @@
 using ConstructionInspection.Application.Common.Exceptions;
 using ConstructionInspection.Domain.ConstructionObjects;
 using ConstructionInspection.Domain.Drawings;
+using ConstructionInspection.Application.Drawings.Interfaces;
+using ConstructionInspection.Api.Drawings;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -49,6 +51,12 @@ public sealed class GlobalExceptionHandler(
                 domain.Message,
                 domain.Code),
             DrawingDocumentDomainException drawing => CreateProblem(409, "Drawing conflict", drawing.Message, drawing.Code),
+            RangeNotSatisfiableException range => CreateRangeProblem(httpContext, range),
+            ObjectStorageException storage => CreateProblem(
+                StatusCodes.Status502BadGateway,
+                "Drawing storage unavailable",
+                storage.Message,
+                storage.Code),
             _ => new ProblemDetails
             {
                 Status = StatusCodes.Status500InternalServerError,
@@ -60,7 +68,15 @@ public sealed class GlobalExceptionHandler(
         problem.Extensions["traceId"] = httpContext.TraceIdentifier;
         httpContext.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
 
-        if (problem.Status >= StatusCodes.Status500InternalServerError)
+        if (exception is ObjectStorageException storageException)
+        {
+            logger.LogWarning(
+                "Drawing storage request failed. Code={Code}, CauseType={CauseType}, TraceId={TraceId}.",
+                storageException.Code,
+                storageException.InnerException?.GetType().Name ?? "None",
+                httpContext.TraceIdentifier);
+        }
+        else if (problem.Status >= StatusCodes.Status500InternalServerError)
         {
             logger.LogError(exception, "Unhandled exception for trace {TraceId}.", httpContext.TraceIdentifier);
         }
@@ -71,6 +87,16 @@ public sealed class GlobalExceptionHandler(
             ProblemDetails = problem,
             Exception = exception
         });
+    }
+
+    private static ProblemDetails CreateRangeProblem(HttpContext context, RangeNotSatisfiableException exception)
+    {
+        context.Response.Headers.ContentRange = $"bytes */{exception.ResourceLength}";
+        return CreateProblem(
+            StatusCodes.Status416RangeNotSatisfiable,
+            "Range not satisfiable",
+            exception.Message,
+            exception.Code);
     }
 
     private static ProblemDetails CreateProblem(

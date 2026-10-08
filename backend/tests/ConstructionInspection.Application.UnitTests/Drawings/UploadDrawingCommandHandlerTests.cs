@@ -97,6 +97,10 @@ public sealed class UploadDrawingCommandHandlerTests
         public Task CopyToAsync(string k, Stream d, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteAsync(string k, CancellationToken ct) { s.Deleted = true; return Task.CompletedTask; }
         public Task<bool> ExistsAsync(string k, CancellationToken ct) => Task.FromResult(false);
+        public Task<ObjectStorageMetadata?> GetMetadataAsync(string k, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task CopyRangeToAsync(string k, Stream d, long o, long l, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
     private sealed class Repository(State s) : IDrawingDocumentRepository
     {
@@ -112,6 +116,8 @@ public sealed class UploadDrawingCommandHandlerTests
                 d.Sha256, d.PageCount, d.Status, d.CreatedAt, d.CreatedByUserId, ""));
         }
         public Task<PagedResult<DrawingListItemDto>> GetPageAsync(DrawingQueryCriteria c, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<DrawingContentDescriptor?> GetContentDescriptorAsync(Guid id, CancellationToken ct) =>
             throw new NotSupportedException();
     }
     private sealed class UnitOfWork(State s) : IUnitOfWork

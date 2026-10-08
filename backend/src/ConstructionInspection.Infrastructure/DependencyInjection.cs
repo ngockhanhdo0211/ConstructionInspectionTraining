@@ -7,6 +7,7 @@ using ConstructionInspection.Infrastructure.Persistence;
 using ConstructionInspection.Infrastructure.Time;
 using ConstructionInspection.Infrastructure.Pdf;
 using ConstructionInspection.Infrastructure.Storage;
+using Amazon.S3;
 using Minio;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Identity;
@@ -78,6 +79,18 @@ public static class DependencyInjection
                 .WithCredentials(value.AccessKey, value.SecretKey);
             if (value.UseSsl) builder = builder.WithSSL();
             return builder.Build();
+        });
+        services.AddSingleton<IAmazonS3>(provider =>
+        {
+            var value = provider.GetRequiredService<IOptions<ObjectStorageOptions>>().Value;
+            var configuration = new AmazonS3Config
+            {
+                ServiceURL = value.Endpoint,
+                ForcePathStyle = true,
+                AuthenticationRegion = "us-east-1",
+                MaxErrorRetry = 0
+            };
+            return new AmazonS3Client(value.AccessKey, value.SecretKey, configuration);
         });
         services.AddSingleton<IObjectStorage, MinioObjectStorage>();
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();

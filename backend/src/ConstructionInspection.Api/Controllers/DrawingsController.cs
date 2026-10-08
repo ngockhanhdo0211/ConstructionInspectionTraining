@@ -4,6 +4,8 @@ using ConstructionInspection.Application.Drawings.Commands.UploadDrawing;
 using ConstructionInspection.Application.Drawings.Models;
 using ConstructionInspection.Application.Drawings.Queries.GetDrawingDetail;
 using ConstructionInspection.Application.Drawings.Queries.GetDrawings;
+using ConstructionInspection.Application.Drawings.Queries.OpenDrawingContent;
+using ConstructionInspection.Api.Drawings;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,7 +15,7 @@ namespace ConstructionInspection.Api.Controllers;
 [ApiController]
 [Authorize(Roles = ApplicationRoles.Administrator + "," + ApplicationRoles.Manager)]
 [Route("api/drawings")]
-public sealed class DrawingsController(ISender sender) : ControllerBase
+public sealed class DrawingsController(ISender sender, IDrawingContentResponseWriter contentWriter) : ControllerBase
 {
     [HttpPost]
     [Authorize(Roles = ApplicationRoles.Administrator)]
@@ -40,4 +42,11 @@ public sealed class DrawingsController(ISender sender) : ControllerBase
 
     [HttpGet("{id:guid}")]
     public Task<DrawingDetailDto> GetById(Guid id, CancellationToken ct) => sender.Send(new GetDrawingDetailQuery(id), ct);
+
+    [HttpGet("{id:guid}/content")]
+    public async Task GetContent(Guid id, CancellationToken ct)
+    {
+        var drawing = await sender.Send(new OpenDrawingContentQuery(id), ct);
+        await contentWriter.WriteAsync(HttpContext, drawing, ct);
+    }
 }

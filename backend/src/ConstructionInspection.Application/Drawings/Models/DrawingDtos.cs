@@ -2,6 +2,16 @@ using ConstructionInspection.Domain.Drawings;
 
 namespace ConstructionInspection.Application.Drawings.Models;
 
+public sealed record DrawingContentDescriptor(
+    Guid Id,
+    string OriginalFileName,
+    string StorageKey,
+    string ContentType,
+    long FileSize,
+    string Sha256,
+    DrawingDocumentStatus Status,
+    DateTime CreatedAt);
+
 public sealed record DrawingListItemDto(Guid Id, string OriginalFileName, long FileSize, int PageCount,
     DrawingDocumentStatus Status, DateTime CreatedAt, Guid CreatedByUserId);
 
