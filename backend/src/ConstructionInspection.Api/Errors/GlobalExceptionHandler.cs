@@ -1,6 +1,7 @@
 using ConstructionInspection.Application.Common.Exceptions;
 using ConstructionInspection.Domain.ConstructionObjects;
 using ConstructionInspection.Domain.Drawings;
+using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Application.Drawings.Interfaces;
 using ConstructionInspection.Api.Drawings;
 using FluentValidation;
@@ -51,6 +52,10 @@ public sealed class GlobalExceptionHandler(
                 domain.Message,
                 domain.Code),
             DrawingDocumentDomainException drawing => CreateProblem(409, "Drawing conflict", drawing.Message, drawing.Code),
+            DrawingObjectMappingDomainException mapping when mapping.Code is
+                "drawing_mapping.invalid_geometry" or "drawing_mapping.invalid_page" or "drawing_mapping.invalid_shape_type"
+                => CreateProblem(400, "Drawing mapping validation failed", mapping.Message, mapping.Code),
+            DrawingObjectMappingDomainException mapping => CreateProblem(409, "Drawing mapping conflict", mapping.Message, mapping.Code),
             RangeNotSatisfiableException range => CreateRangeProblem(httpContext, range),
             ObjectStorageException storage => CreateProblem(
                 StatusCodes.Status502BadGateway,

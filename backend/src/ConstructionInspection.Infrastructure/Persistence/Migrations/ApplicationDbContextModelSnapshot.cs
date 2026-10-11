@@ -102,6 +102,105 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ConstructionInspection.Domain.DrawingMappings.DrawingObjectMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Bottom")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<Guid>("ConstructionObjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("DeactivatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DrawingDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Left")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Right")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("ShapeType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<decimal>("Top")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("DeactivatedByUserId");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("ConstructionObjectId", "Status")
+                        .HasDatabaseName("IX_DrawingObjectMappings_ConstructionObjectId_Status");
+
+                    b.HasIndex("DrawingDocumentId", "PageNumber", "Status")
+                        .HasDatabaseName("IX_DrawingObjectMappings_DrawingDocumentId_PageNumber_Status");
+
+                    b.HasIndex("DrawingDocumentId", "PageNumber", "ConstructionObjectId", "Left", "Bottom", "Right", "Top")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DrawingObjectMappings_ActiveExact")
+                        .HasFilter("[Status] = 'Active'");
+
+                    b.ToTable("DrawingObjectMappings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DrawingObjectMappings_DeactivationAudit", "([Status] = 'Active' AND [DeactivatedAt] IS NULL AND [DeactivatedByUserId] IS NULL) OR ([Status] = 'Inactive' AND [DeactivatedAt] IS NOT NULL AND [DeactivatedByUserId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_DrawingObjectMappings_Geometry", "[Left] >= 0 AND [Left] < [Right] AND [Right] <= 1 AND [Bottom] >= 0 AND [Bottom] < [Top] AND [Top] <= 1");
+
+                            t.HasCheckConstraint("CK_DrawingObjectMappings_PageNumber", "[PageNumber] > 0");
+
+                            t.HasCheckConstraint("CK_DrawingObjectMappings_ShapeType", "[ShapeType] = 'Rectangle'");
+
+                            t.HasCheckConstraint("CK_DrawingObjectMappings_Status", "[Status] IN ('Active','Inactive')");
+                        });
+                });
+
             modelBuilder.Entity("ConstructionInspection.Domain.Drawings.DrawingDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -436,6 +535,37 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.DrawingMappings.DrawingObjectMapping", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.ConstructionObjects.ConstructionObject", null)
+                        .WithMany()
+                        .HasForeignKey("ConstructionObjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("DeactivatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Domain.Drawings.DrawingDocument", null)
+                        .WithMany()
+                        .HasForeignKey("DrawingDocumentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()

@@ -85,24 +85,30 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         private readonly Dictionary<string, byte[]> _objects = [];
         private readonly List<(long Offset, long Length)> _ranges = [];
         public IReadOnlyList<(long Offset, long Length)> Ranges => _ranges;
+        public int CallCount { get; private set; }
         public bool BlockCopies { get; set; }
         public bool SawCancellation { get; private set; }
         public async Task UploadAsync(string key, Stream content, long length, string contentType, CancellationToken ct)
         {
+            CallCount++;
             using var output = new MemoryStream();
             await content.CopyToAsync(output, ct);
             _objects[key] = output.ToArray();
         }
-        public async Task CopyToAsync(string key, Stream destination, CancellationToken ct) =>
-            await destination.WriteAsync(_objects[key], ct);
-        public Task DeleteAsync(string key, CancellationToken ct) { _objects.Remove(key); return Task.CompletedTask; }
-        public Task<bool> ExistsAsync(string key, CancellationToken ct) => Task.FromResult(_objects.ContainsKey(key));
-        public Task<ObjectStorageMetadata?> GetMetadataAsync(string key, CancellationToken ct) =>
-            Task.FromResult(_objects.TryGetValue(key, out var value)
+        public async Task CopyToAsync(string key, Stream destination, CancellationToken ct)
+        { CallCount++; await destination.WriteAsync(_objects[key], ct); }
+        public Task DeleteAsync(string key, CancellationToken ct) { CallCount++; _objects.Remove(key); return Task.CompletedTask; }
+        public Task<bool> ExistsAsync(string key, CancellationToken ct) { CallCount++; return Task.FromResult(_objects.ContainsKey(key)); }
+        public Task<ObjectStorageMetadata?> GetMetadataAsync(string key, CancellationToken ct)
+        {
+            CallCount++;
+            return Task.FromResult(_objects.TryGetValue(key, out var value)
                 ? new ObjectStorageMetadata(value.LongLength, new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero))
                 : null);
+        }
         public async Task CopyRangeToAsync(string key, Stream destination, long offset, long length, CancellationToken ct)
         {
+            CallCount++;
             _ranges.Add((offset, length));
             if (BlockCopies)
             {
@@ -120,6 +126,7 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
             _ranges.Clear();
             BlockCopies = false;
             SawCancellation = false;
+            CallCount = 0;
         }
     }
 
