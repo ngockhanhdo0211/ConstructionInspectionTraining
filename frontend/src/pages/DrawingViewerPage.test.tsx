@@ -4,14 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDrawing } from '../api/client'
+import { getConstructionObjects, getDrawing, getDrawingMappings } from '../api/client'
 import { AuthProvider } from '../auth/AuthContext'
 import { getDocument } from '../pdf/pdfjs'
 import { DrawingViewerPage } from './DrawingViewerPage'
 
 vi.mock('../api/client', async importOriginal => {
   const actual = await importOriginal<typeof import('../api/client')>()
-  return { ...actual, getDrawing: vi.fn() }
+  return { ...actual, getDrawing: vi.fn(), getDrawingMappings: vi.fn(), getConstructionObjects: vi.fn() }
 })
 vi.mock('../pdf/pdfjs', () => ({ getDocument: vi.fn() }))
 
@@ -28,6 +28,8 @@ describe('DrawingViewerPage', () => {
       user: { id: '1', email: 'administrator@local.test', fullName: 'Administrator', roles: ['ADMINISTRATOR'] },
     }))
     vi.mocked(getDrawing).mockResolvedValue(drawing)
+    vi.mocked(getDrawingMappings).mockResolvedValue({ drawingId: drawing.id, pageNumber: 1, items: [] })
+    vi.mocked(getConstructionObjects).mockResolvedValue({ items: [], pageNumber: 1, pageSize: 100, totalCount: 0, totalPages: 0 })
     Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', { configurable: true, value: vi.fn(() => ({})) })
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   })
@@ -44,7 +46,8 @@ describe('DrawingViewerPage', () => {
     const destroy = vi.fn().mockResolvedValue(undefined)
     const render = vi.fn(() => ({ promise: Promise.resolve(), cancel }))
     const getPage = vi.fn().mockResolvedValue({
-      getViewport: ({ scale, rotation }: { scale: number; rotation: number }) => ({ width: 600 * scale, height: 800 * scale, rotation }),
+      rotate: 0, view: [0, 0, 600, 800],
+      getViewport: ({ scale, rotation }: { scale: number; rotation: number }) => ({ width: 600 * scale, height: 800 * scale, rotation, convertToViewportPoint: (x: number, y: number) => [x * scale, (800 - y) * scale], convertToPdfPoint: (x: number, y: number) => [x / scale, 800 - y / scale] }),
       render,
     })
     vi.mocked(getDocument).mockReturnValue({
