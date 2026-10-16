@@ -1,4 +1,4 @@
-import type { CreateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem } from './types'
+import type { CreateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated } from './types'
 
 export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5277').replace(/\/$/, '')
 let getToken: () => string | null = () => null
@@ -41,6 +41,23 @@ export const createObjectWithDrawingMapping = (drawingId: string, pageNumber: nu
   request<{ constructionObject: ConstructionObjectListItem; mapping: DrawingObjectMapping }>(`/api/drawings/${encodeURIComponent(drawingId)}/mappings/with-construction-object`, {
     method: 'POST', body: JSON.stringify({ pageNumber, shapeType: 'Rectangle', geometry, ...object }),
   })
+
+export const getFormTemplates = (signal?: AbortSignal) =>
+  request<PagedResult<FormTemplateListItem>>('/api/form-templates?pageNumber=1&pageSize=100', { signal })
+export const getFormTemplateVersions = (id: string, signal?: AbortSignal) =>
+  request<FormTemplateVersions>(`/api/form-templates/${encodeURIComponent(id)}/versions?pageNumber=1&pageSize=100`, { signal })
+export const getFormTemplateVersion = (id: string, versionNumber: number, signal?: AbortSignal) =>
+  request<FormTemplateVersionDetail>(`/api/form-templates/${encodeURIComponent(id)}/versions/${versionNumber}`, { signal })
+export const createFormTemplate = (input: { code: string; name: string; description?: string | null; schemaJson: string }) =>
+  request<FormTemplateCreated>('/api/form-templates', { method: 'POST', body: JSON.stringify(input) })
+export const updateFormTemplateDraft = (id: string, versionNumber: number, schemaJson: string, rowVersion: string) =>
+  request<FormTemplateVersionDetail>(`/api/form-templates/${encodeURIComponent(id)}/versions/${versionNumber}`, { method: 'PUT', body: JSON.stringify({ schemaJson, rowVersion }) })
+export const publishFormTemplateDraft = (id: string, versionNumber: number, templateRowVersion: string, versionRowVersion: string) =>
+  request<FormTemplateVersionDetail>(`/api/form-templates/${encodeURIComponent(id)}/versions/${versionNumber}/publish`, { method: 'POST', body: JSON.stringify({ templateRowVersion, versionRowVersion }) })
+export const createFormTemplateVersion = (id: string, schemaJson: string, templateRowVersion: string) =>
+  request<FormTemplateVersionDetail>(`/api/form-templates/${encodeURIComponent(id)}/versions`, { method: 'POST', body: JSON.stringify({ schemaJson, templateRowVersion }) })
+export const deactivateFormTemplate = (id: string, rowVersion: string) =>
+  request<FormTemplateDeactivated>(`/api/form-templates/${encodeURIComponent(id)}/deactivate`, { method: 'POST', body: JSON.stringify({ rowVersion }) })
 
 export function uploadDrawing(file: File, onProgress: (value: number) => void): Promise<UploadResponse> {
   return new Promise((resolve, reject) => {

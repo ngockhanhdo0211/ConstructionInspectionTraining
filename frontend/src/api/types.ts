@@ -19,3 +19,25 @@ export type CreateConstructionObjectInput = {
   parentId: string | null; code: string; name: string; objectType: ConstructionObjectType
   location?: string | null; description?: string | null
 }
+
+export type FormTemplateStatus = 'Active' | 'Inactive'
+export type FormTemplateVersionStatus = 'Draft' | 'Published'
+export type FormTemplateListItem = {
+  id: string; code: string; name: string; description?: string | null; status: FormTemplateStatus
+  latestPublishedVersionNumber?: number | null; draftVersionNumber?: number | null; rowVersion: string
+}
+export type FormTemplateHeader = FormTemplateListItem & { nextVersionNumber: number }
+export type FormTemplateVersionMetadata = {
+  id: string; versionNumber: number; status: FormTemplateVersionStatus; createdAt: string; createdByUserId: string
+  updatedAt?: string | null; updatedByUserId?: string | null; publishedAt?: string | null; publishedByUserId?: string | null
+  isReferenced: boolean; rowVersion: string
+}
+export type FormTemplateVersions = { template: FormTemplateHeader; versions: PagedResult<FormTemplateVersionMetadata> }
+export type FormTemplateVersionDetail = Omit<FormTemplateVersionMetadata, 'isReferenced'> & {
+  template: FormTemplateHeader; schemaJson: string; schemaUtf8ByteCount: number
+}
+export type FormTemplateCreated = { template: FormTemplateHeader; version: FormTemplateVersionDetail }
+export type FormTemplateDeactivated = {
+  id: string; status: 'Inactive'; updatedAt?: string | null; updatedByUserId?: string | null
+  deactivatedAt: string; deactivatedByUserId: string; rowVersion: string
+}

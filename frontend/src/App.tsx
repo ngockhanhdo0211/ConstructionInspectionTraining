@@ -6,6 +6,10 @@ import { AppShell } from './components/AppShell'
 import { DrawingDetailPage } from './pages/DrawingDetailPage'
 import { DrawingsPage } from './pages/DrawingsPage'
 import { LoginPage } from './pages/LoginPage'
+import { FormTemplateAdminRoute } from './components/FormTemplateAdminRoute'
+import { FormTemplatesPage } from './pages/FormTemplatesPage'
+import { NewFormTemplatePage } from './pages/NewFormTemplatePage'
+import { FormTemplateDetailPage } from './pages/FormTemplateDetailPage'
 
 const DrawingViewerPage = lazy(() => import('./pages/DrawingViewerPage').then(module => ({ default: module.DrawingViewerPage })))
 
@@ -16,6 +20,11 @@ export default function App() {
       <Route path="/drawings" element={<DrawingsPage />} />
       <Route path="/drawings/:id" element={<DrawingDetailPage />} />
       <Route path="/drawings/:id/viewer" element={<Suspense fallback={<p className="state" role="status">Đang mở trình xem PDF…</p>}><DrawingViewerPage /></Suspense>} />
+      <Route element={<FormTemplateAdminRoute />}>
+        <Route path="/form-templates" element={<FormTemplatesPage />} />
+        <Route path="/form-templates/new" element={<NewFormTemplatePage />} />
+        <Route path="/form-templates/:id" element={<FormTemplateDetailPage />} />
+      </Route>
     </Route>
     <Route path="*" element={<Navigate to="/drawings" replace />} />
   </Routes>
