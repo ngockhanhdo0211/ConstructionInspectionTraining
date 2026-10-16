@@ -2,6 +2,7 @@ using ConstructionInspection.Application.Common.Exceptions;
 using ConstructionInspection.Domain.ConstructionObjects;
 using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
+using ConstructionInspection.Domain.FormTemplates;
 using ConstructionInspection.Application.Drawings.Interfaces;
 using ConstructionInspection.Api.Drawings;
 using FluentValidation;
@@ -23,6 +24,11 @@ public sealed class GlobalExceptionHandler(
         var problem = exception switch
         {
             ValidationException validationException => CreateValidationProblem(validationException),
+            BadRequestException badRequest => CreateProblem(
+                StatusCodes.Status400BadRequest,
+                "Form Template validation failed",
+                badRequest.Message,
+                badRequest.Code),
             PayloadTooLargeException => CreateProblem(413, "Upload too large", exception.Message, "drawing.payload_too_large"),
             UnsupportedMediaTypeException => CreateProblem(415, "Unsupported PDF", exception.Message, "drawing.unsupported_media_type"),
             AuthenticationFailedException => new ProblemDetails
@@ -56,6 +62,17 @@ public sealed class GlobalExceptionHandler(
                 "drawing_mapping.invalid_geometry" or "drawing_mapping.invalid_page" or "drawing_mapping.invalid_shape_type"
                 => CreateProblem(400, "Drawing mapping validation failed", mapping.Message, mapping.Code),
             DrawingObjectMappingDomainException mapping => CreateProblem(409, "Drawing mapping conflict", mapping.Message, mapping.Code),
+            FormTemplateDomainException formTemplate when formTemplate.Code is
+                "form_template.invalid_code" or "form_template.invalid_name" or
+                "form_template.invalid_description" or "form_template.invalid_identity" or
+                "form_template.invalid_actor" or "form_template.invalid_version_number" or
+                "form_template.schema_invalid"
+                => CreateProblem(400, "Form Template validation failed", formTemplate.Message, formTemplate.Code),
+            FormTemplateDomainException formTemplate => CreateProblem(
+                StatusCodes.Status409Conflict,
+                "Form Template conflict",
+                formTemplate.Message,
+                formTemplate.Code),
             RangeNotSatisfiableException range => CreateRangeProblem(httpContext, range),
             ObjectStorageException storage => CreateProblem(
                 StatusCodes.Status502BadGateway,

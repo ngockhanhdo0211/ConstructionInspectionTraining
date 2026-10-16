@@ -2,6 +2,7 @@ using ConstructionInspection.Application.Common.Interfaces;
 using ConstructionInspection.Application.ConstructionObjects.Interfaces;
 using ConstructionInspection.Application.Drawings.Interfaces;
 using ConstructionInspection.Application.DrawingMappings.Interfaces;
+using ConstructionInspection.Application.FormTemplates.Interfaces;
 using ConstructionInspection.Infrastructure.Authentication;
 using ConstructionInspection.Infrastructure.Identity;
 using ConstructionInspection.Infrastructure.Persistence;
@@ -66,6 +67,8 @@ public static class DependencyInjection
         services.AddScoped<IDrawingDocumentReadService, DrawingDocumentReadService>();
         services.AddScoped<IDrawingObjectMappingRepository, DrawingObjectMappingRepository>();
         services.AddScoped<IDrawingObjectMappingReadService, DrawingObjectMappingReadService>();
+        services.AddScoped<IFormTemplateRepository, FormTemplateRepository>();
+        services.AddScoped<IFormTemplateReadService, FormTemplateReadService>();
         services.AddSingleton<IUploadStagingStore, TemporaryFileStagingStore>();
         services.AddSingleton<IPdfMetadataReader, PdfSharpMetadataReader>();
         services.AddOptions<ObjectStorageOptions>()

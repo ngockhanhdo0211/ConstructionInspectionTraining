@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
+using ConstructionInspection.Domain.FormTemplates;
 
 namespace ConstructionInspection.Infrastructure.Persistence;
 
@@ -17,6 +18,13 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
         }
         catch (DbUpdateConcurrencyException exception)
         {
+            if (exception.Entries.Any(entry => entry.Entity is FormTemplate or FormTemplateVersion))
+            {
+                throw new ConflictException(
+                    "form_template.concurrency_conflict",
+                    "The Form Template was changed by another request.");
+            }
+
             if (exception.Entries.Any(entry => entry.Entity is DrawingObjectMapping))
             {
                 throw new ConflictException(
@@ -38,6 +46,28 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
         catch (DbUpdateException exception)
             when (exception.InnerException is SqlException { Number: 2601 or 2627 })
         {
+            var sqlMessage = exception.InnerException.Message;
+            if (sqlMessage.Contains("UX_FormTemplates_Code", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ConflictException(
+                    "form_template.code_duplicate",
+                    "A Form Template with this Code already exists.");
+            }
+
+            if (sqlMessage.Contains("UX_FormTemplateVersions_OneDraft", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ConflictException(
+                    "form_template.draft_exists",
+                    "The Form Template already has a Draft version.");
+            }
+
+            if (sqlMessage.Contains("UX_FormTemplateVersions_TemplateId_VersionNumber", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ConflictException(
+                    "form_template.concurrency_conflict",
+                    "The Form Template version number was allocated by another request.");
+            }
+
             if (exception.InnerException.Message.Contains(
                     "UX_DrawingObjectMappings_ActiveExact",
                     StringComparison.OrdinalIgnoreCase))

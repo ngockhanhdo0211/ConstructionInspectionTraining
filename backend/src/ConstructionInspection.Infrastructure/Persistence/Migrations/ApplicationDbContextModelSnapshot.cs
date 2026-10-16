@@ -276,6 +276,182 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ConstructionInspection.Domain.FormTemplates.FormTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("DeactivatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int>("NextVersionNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(2);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormTemplates_Code");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("IX_FormTemplates_CreatedByUserId");
+
+                    b.HasIndex("DeactivatedByUserId")
+                        .HasDatabaseName("IX_FormTemplates_DeactivatedByUserId");
+
+                    b.HasIndex("UpdatedByUserId")
+                        .HasDatabaseName("IX_FormTemplates_UpdatedByUserId");
+
+                    b.HasIndex("Status", "Name")
+                        .HasDatabaseName("IX_FormTemplates_Status_Name");
+
+                    b.ToTable("FormTemplates", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormTemplates_DeactivatedAudit", "([Status] = 'Active' AND [DeactivatedByUserId] IS NULL AND [DeactivatedAt] IS NULL) OR ([Status] = 'Inactive' AND [DeactivatedByUserId] IS NOT NULL AND [DeactivatedAt] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_FormTemplates_NextVersionNumber", "[NextVersionNumber] > 1");
+
+                            t.HasCheckConstraint("CK_FormTemplates_Status", "[Status] IN ('Active','Inactive')");
+
+                            t.HasCheckConstraint("CK_FormTemplates_UpdatedAudit", "([UpdatedByUserId] IS NULL AND [UpdatedAt] IS NULL) OR ([UpdatedByUserId] IS NOT NULL AND [UpdatedAt] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.FormTemplates.FormTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("PublishedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SchemaJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("IX_FormTemplateVersions_CreatedByUserId");
+
+                    b.HasIndex("FormTemplateId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormTemplateVersions_OneDraft")
+                        .HasFilter("[Status] = 'Draft'");
+
+                    b.HasIndex("PublishedByUserId")
+                        .HasDatabaseName("IX_FormTemplateVersions_PublishedByUserId");
+
+                    b.HasIndex("UpdatedByUserId")
+                        .HasDatabaseName("IX_FormTemplateVersions_UpdatedByUserId");
+
+                    b.HasIndex("FormTemplateId", "VersionNumber")
+                        .IsUnique()
+                        .IsDescending(false, true)
+                        .HasDatabaseName("UX_FormTemplateVersions_TemplateId_VersionNumber");
+
+                    b.HasIndex("FormTemplateId", "Status", "VersionNumber")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("IX_FormTemplateVersions_TemplateId_Status_VersionNumber");
+
+                    b.ToTable("FormTemplateVersions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormTemplateVersions_PublishedAudit", "([Status] = 'Draft' AND [PublishedByUserId] IS NULL AND [PublishedAt] IS NULL) OR ([Status] = 'Published' AND [PublishedByUserId] IS NOT NULL AND [PublishedAt] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_FormTemplateVersions_SchemaJson", "ISJSON([SchemaJson]) = 1");
+
+                            t.HasCheckConstraint("CK_FormTemplateVersions_Status", "[Status] IN ('Draft','Published')");
+
+                            t.HasCheckConstraint("CK_FormTemplateVersions_UpdatedAudit", "([UpdatedByUserId] IS NULL AND [UpdatedAt] IS NULL) OR ([UpdatedByUserId] IS NOT NULL AND [UpdatedAt] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_FormTemplateVersions_VersionNumber", "[VersionNumber] > 0");
+                        });
+                });
+
             modelBuilder.Entity("ConstructionInspection.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -580,6 +756,50 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.FormTemplates.FormTemplate", b =>
+                {
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("DeactivatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.FormTemplates.FormTemplateVersion", b =>
+                {
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.FormTemplates.FormTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("FormTemplateId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("PublishedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
