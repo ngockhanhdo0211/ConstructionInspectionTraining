@@ -41,10 +41,15 @@ public sealed class DrawingObjectMappingConfiguration : IEntityTypeConfiguration
         builder.HasIndex(x => new { x.ConstructionObjectId, x.Status })
             .HasDatabaseName("IX_DrawingObjectMappings_ConstructionObjectId_Status");
         builder.HasIndex(x => new
-            {
-                x.DrawingDocumentId, x.PageNumber, x.ConstructionObjectId,
-                x.Left, x.Bottom, x.Right, x.Top
-            })
+        {
+            x.DrawingDocumentId,
+            x.PageNumber,
+            x.ConstructionObjectId,
+            x.Left,
+            x.Bottom,
+            x.Right,
+            x.Top
+        })
             .IsUnique()
             .HasFilter("[Status] = 'Active'")
             .HasDatabaseName("UX_DrawingObjectMappings_ActiveExact");
