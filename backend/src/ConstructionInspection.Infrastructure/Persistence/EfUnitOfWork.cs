@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
+using ConstructionInspection.Domain.Inspections;
 
 namespace ConstructionInspection.Infrastructure.Persistence;
 
@@ -18,6 +19,13 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
         }
         catch (DbUpdateConcurrencyException exception)
         {
+            if (exception.Entries.Any(entry => entry.Entity is Inspection or InspectionSubmission or BusinessProcess))
+            {
+                throw new ConflictException(
+                    "inspection.concurrency_conflict",
+                    "The Inspection was changed by another request.");
+            }
+
             if (exception.Entries.Any(entry => entry.Entity is FormTemplate or FormTemplateVersion))
             {
                 throw new ConflictException(
@@ -47,6 +55,20 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
             when (exception.InnerException is SqlException { Number: 2601 or 2627 })
         {
             var sqlMessage = exception.InnerException.Message;
+            if (sqlMessage.Contains("UX_Inspections_Number", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ConflictException(
+                    "inspection.number_conflict",
+                    "The generated Inspection Number conflicts with an existing record.");
+            }
+
+            if (sqlMessage.Contains("UX_BusinessProcesses_InspectionId", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ConflictException(
+                    "inspection.process_conflict",
+                    "The Inspection already has a Business Process.");
+            }
+
             if (sqlMessage.Contains("UX_FormTemplates_Code", StringComparison.OrdinalIgnoreCase))
             {
                 throw new ConflictException(

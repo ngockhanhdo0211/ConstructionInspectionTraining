@@ -3,6 +3,7 @@ using ConstructionInspection.Domain.ConstructionObjects;
 using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
+using ConstructionInspection.Domain.Inspections;
 using ConstructionInspection.Application.Drawings.Interfaces;
 using ConstructionInspection.Api.Drawings;
 using FluentValidation;
@@ -26,10 +27,18 @@ public sealed class GlobalExceptionHandler(
             ValidationException validationException => CreateValidationProblem(validationException),
             BadRequestException badRequest => CreateProblem(
                 StatusCodes.Status400BadRequest,
-                "Form Template validation failed",
+                badRequest.Code.StartsWith("inspection.", StringComparison.Ordinal)
+                    ? "Inspection validation failed"
+                    : "Form Template validation failed",
                 badRequest.Message,
                 badRequest.Code),
-            PayloadTooLargeException => CreateProblem(413, "Upload too large", exception.Message, "drawing.payload_too_large"),
+            PayloadTooLargeException payload => CreateProblem(
+                413,
+                payload.Code.StartsWith("inspection.", StringComparison.Ordinal)
+                    ? "Inspection data too large"
+                    : "Upload too large",
+                payload.Message,
+                payload.Code),
             UnsupportedMediaTypeException => CreateProblem(415, "Unsupported PDF", exception.Message, "drawing.unsupported_media_type"),
             AuthenticationFailedException => new ProblemDetails
             {
@@ -73,6 +82,16 @@ public sealed class GlobalExceptionHandler(
                 "Form Template conflict",
                 formTemplate.Message,
                 formTemplate.Code),
+            InspectionDomainException inspection when inspection.Code is
+                "inspection.invalid_identity" or "inspection.invalid_number" or
+                "inspection.invalid_title" or "inspection.invalid_description" or
+                "inspection.invalid_submission" or "inspection.form_data_invalid"
+                => CreateProblem(400, "Inspection validation failed", inspection.Message, inspection.Code),
+            InspectionDomainException inspection => CreateProblem(
+                StatusCodes.Status409Conflict,
+                "Inspection conflict",
+                inspection.Message,
+                inspection.Code),
             RangeNotSatisfiableException range => CreateRangeProblem(httpContext, range),
             ObjectStorageException storage => CreateProblem(
                 StatusCodes.Status502BadGateway,

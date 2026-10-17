@@ -3,6 +3,7 @@ using ConstructionInspection.Domain.ConstructionObjects;
 using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
+using ConstructionInspection.Domain.Inspections;
 using ConstructionInspection.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -19,6 +20,10 @@ public sealed class ApplicationDbContext(
     public DbSet<DrawingObjectMapping> DrawingObjectMappings => Set<DrawingObjectMapping>();
     public DbSet<FormTemplate> FormTemplates => Set<FormTemplate>();
     public DbSet<FormTemplateVersion> FormTemplateVersions => Set<FormTemplateVersion>();
+    public DbSet<Inspection> Inspections => Set<Inspection>();
+    public DbSet<InspectionSubmission> InspectionSubmissions => Set<InspectionSubmission>();
+    public DbSet<BusinessProcess> BusinessProcesses => Set<BusinessProcess>();
+    public DbSet<ProcessHistory> ProcessHistories => Set<ProcessHistory>();
     private static readonly Guid InspectorRoleId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ReviewerRoleId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid ManagerRoleId = Guid.Parse("33333333-3333-3333-3333-333333333333");
@@ -29,6 +34,7 @@ public sealed class ApplicationDbContext(
         base.OnModelCreating(builder);
 
         builder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        builder.HasSequence<long>("InspectionNumberSequence").StartsAt(1).IncrementsBy(1);
 
         builder.Entity<ApplicationUser>(user =>
         {

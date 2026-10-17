@@ -22,6 +22,8 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.HasSequence("InspectionNumberSequence");
+
             modelBuilder.Entity("ConstructionInspection.Domain.ConstructionObjects.ConstructionObject", b =>
                 {
                     b.Property<Guid>("Id")
@@ -452,6 +454,263 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.BusinessProcess", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedToUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DueAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("InspectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("InspectionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BusinessProcesses_InspectionId");
+
+                    b.HasIndex("EntityType", "Status", "UpdatedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("IX_BusinessProcesses_EntityType_Status_UpdatedAt");
+
+                    b.ToTable("BusinessProcesses", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] = 'Inspection'");
+
+                            t.HasCheckConstraint("CK_BusinessProcesses_Status", "[Status] = 'Draft'");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.Inspection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConstructionObjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("FormTemplateVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid?>("ReviewerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentSubmissionId");
+
+                    b.HasIndex("FormTemplateVersionId")
+                        .HasDatabaseName("IX_Inspections_FormTemplateVersionId");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Inspections_Number");
+
+                    b.HasIndex("ConstructionObjectId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Inspections_ConstructionObjectId_CreatedAt");
+
+                    b.HasIndex("CreatedByUserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Inspections_CreatedByUserId_CreatedAt");
+
+                    b.HasIndex("ReviewerUserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Inspections_ReviewerUserId_CreatedAt");
+
+                    b.ToTable("Inspections", (string)null);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.InspectionSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("InspectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("InspectionId", "RevisionNumber")
+                        .IsUnique()
+                        .IsDescending(false, true)
+                        .HasDatabaseName("UX_InspectionSubmissions_InspectionId_RevisionNumber");
+
+                    b.ToTable("InspectionSubmissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_InspectionSubmissions_DataJson", "ISJSON([DataJson]) = 1");
+
+                            t.HasCheckConstraint("CK_InspectionSubmissions_RevisionNumber", "[RevisionNumber] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.ProcessHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<Guid>("BusinessProcessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(30)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("PerformedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("PerformedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PerformedByUserId");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.HasIndex("BusinessProcessId", "PerformedAt", "Id")
+                        .HasDatabaseName("IX_ProcessHistories_BusinessProcessId_PerformedAt_Id");
+
+                    b.ToTable("ProcessHistories", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] = 'Create'");
+
+                            t.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] = 'Draft'");
+                        });
+                });
+
             modelBuilder.Entity("ConstructionInspection.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -799,6 +1058,92 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                     b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.BusinessProcess", b =>
+                {
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Inspections.Inspection", null)
+                        .WithOne()
+                        .HasForeignKey("ConstructionInspection.Domain.Inspections.BusinessProcess", "InspectionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.Inspection", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.ConstructionObjects.ConstructionObject", null)
+                        .WithMany()
+                        .HasForeignKey("ConstructionObjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Inspections.InspectionSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentSubmissionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Domain.FormTemplates.FormTemplateVersion", null)
+                        .WithMany()
+                        .HasForeignKey("FormTemplateVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.InspectionSubmission", b =>
+                {
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Inspections.Inspection", null)
+                        .WithMany()
+                        .HasForeignKey("InspectionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Inspections.ProcessHistory", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.Inspections.BusinessProcess", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessProcessId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("PerformedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Inspections.InspectionSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("SubmissionId")
                         .OnDelete(DeleteBehavior.NoAction);
                 });
 
