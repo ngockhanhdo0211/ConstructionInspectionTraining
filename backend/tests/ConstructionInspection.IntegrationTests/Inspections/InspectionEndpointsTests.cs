@@ -61,6 +61,63 @@ public sealed class InspectionEndpointsTests(ConstructionObjectApiFactory factor
     }
 
     [Fact]
+    public async Task CreationLookups_ExposeScopedObjectsAndOnlyActiveTemplatesWithLatestPublishedVersion()
+    {
+        var activeObject = await CreateConstructionObjectAsync("LK-ACT");
+        var inactiveObject = await CreateConstructionObjectAsync("LK-INACT");
+        var usable = await CreateTemplateAsync("LK-USE", publish: true);
+        var latestVersionId = await CreateAndPublishNextVersionAsync(usable.TemplateId, Schema);
+        _ = await CreateTemplateAsync("LK-DRAFT", publish: false);
+        var inactiveTemplate = await CreateTemplateAsync("LK-INACT", publish: true);
+
+        using var administrator = await CreateAuthenticatedClientAsync(AdministratorEmail);
+        Assert.Equal(HttpStatusCode.OK, (await administrator.PostAsJsonAsync(
+            $"/api/construction-objects/{inactiveObject.Id}/deactivate",
+            new { inactiveObject.RowVersion })).StatusCode);
+        var inactiveTemplateVersions = await ReadJsonAsync(
+            await administrator.GetAsync($"/api/form-templates/{inactiveTemplate.TemplateId}/versions"));
+        Assert.Equal(HttpStatusCode.OK, (await administrator.PostAsJsonAsync(
+            $"/api/form-templates/{inactiveTemplate.TemplateId}/deactivate",
+            new { rowVersion = RequiredString(inactiveTemplateVersions.GetProperty("template"), "rowVersion") })).StatusCode);
+
+        using var inspector = await CreateAuthenticatedClientAsync(InspectorEmail);
+        var objectPage = await ReadJsonAsync(await inspector.GetAsync(
+            "/api/construction-objects?search=LK-&pageNumber=1&pageSize=100"));
+        var objectIds = ReadItems(objectPage).Select(item => item.GetProperty("id").GetGuid()).ToArray();
+        Assert.Contains(activeObject.Id, objectIds);
+        Assert.DoesNotContain(inactiveObject.Id, objectIds);
+
+        var optionsResponse = await inspector.GetAsync(
+            "/api/inspections/form-template-options?search=LK-&pageNumber=1&pageSize=1");
+        Assert.Equal(HttpStatusCode.OK, optionsResponse.StatusCode);
+        var options = await ReadJsonAsync(optionsResponse);
+        Assert.Equal(1, options.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, options.GetProperty("totalPages").GetInt32());
+        var option = Assert.Single(ReadItems(options));
+        Assert.Equal(usable.TemplateId, option.GetProperty("formTemplateId").GetGuid());
+        Assert.Equal(2, option.GetProperty("latestPublishedVersionNumber").GetInt32());
+        Assert.Equal(
+            ["code", "formTemplateId", "latestPublishedVersionNumber", "name"],
+            option.EnumerateObject().Select(property => property.Name).Order().ToArray());
+
+        using var anonymous = factory.CreateApiClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync("/api/inspections/form-template-options")).StatusCode);
+        using var manager = await CreateAuthenticatedClientAsync(ManagerEmail);
+        using var reviewer = await CreateAuthenticatedClientAsync(ReviewerEmail);
+        foreach (var client in new[] { administrator, manager, reviewer })
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await client.GetAsync("/api/inspections/form-template-options")).StatusCode);
+
+        var created = await CreateInspectionAsync(
+            inspector,
+            new(activeObject.Id, usable.TemplateId, latestVersionId),
+            "Lookup-backed inspection",
+            new { summary = "ready" });
+        Assert.Equal(2, created.GetProperty("template").GetProperty("versionNumber").GetInt32());
+    }
+
+    [Fact]
     public async Task CreateAndSaveDraft_AreAtomicAuditedAndUseOptimisticConcurrency()
     {
         var fixture = await CreatePublishedFixtureAsync("LIFE");

@@ -16,6 +16,10 @@ public sealed record GetInspectionsQuery(
 
 public sealed record GetInspectionDetailQuery(Guid Id) : IRequest<InspectionDetailDto>;
 
+public sealed record GetFormTemplateOptionsQuery(
+    int PageNumber = 1, int PageSize = 20, string? Search = null)
+    : IRequest<PagedResult<FormTemplateOptionDto>>;
+
 public sealed class GetInspectionsQueryHandler(ICurrentUser currentUser, IInspectionReadService readService)
     : IRequestHandler<GetInspectionsQuery, PagedResult<InspectionListItemDto>>
 {
@@ -32,4 +36,16 @@ public sealed class GetInspectionDetailQueryHandler(ICurrentUser currentUser, II
     public async Task<InspectionDetailDto> Handle(GetInspectionDetailQuery request, CancellationToken cancellationToken) =>
         await readService.GetDetailAsync(request.Id, InspectionAuthorization.RequireReader(currentUser), cancellationToken)
         ?? throw new ResourceNotFoundException("inspection.not_found", "The Inspection was not found.");
+}
+
+public sealed class GetFormTemplateOptionsQueryHandler(ICurrentUser currentUser, IInspectionReadService readService)
+    : IRequestHandler<GetFormTemplateOptionsQuery, PagedResult<FormTemplateOptionDto>>
+{
+    public Task<PagedResult<FormTemplateOptionDto>> Handle(
+        GetFormTemplateOptionsQuery request, CancellationToken cancellationToken)
+    {
+        InspectionAuthorization.RequireInspector(currentUser);
+        return readService.GetFormTemplateOptionsAsync(
+            new(request.PageNumber, request.PageSize, request.Search?.Trim()), cancellationToken);
+    }
 }

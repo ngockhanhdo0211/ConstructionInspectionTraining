@@ -2,6 +2,7 @@ using ConstructionInspection.Application.Common.Models;
 using ConstructionInspection.Application.Inspections;
 using ConstructionInspection.Application.Inspections.Interfaces;
 using ConstructionInspection.Application.Inspections.Models;
+using ConstructionInspection.Domain.FormTemplates;
 using ConstructionInspection.Domain.Inspections;
 using Microsoft.EntityFrameworkCore;
 
@@ -88,6 +89,43 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
                 row.Submission.CreatedAt, row.Submission.UpdatedAt, row.Submission.SubmittedAt,
                 Convert.ToBase64String(row.Submission.RowVersion)),
             Convert.ToBase64String(row.Inspection.RowVersion), Convert.ToBase64String(row.Process.RowVersion));
+    }
+
+    public async Task<PagedResult<FormTemplateOptionDto>> GetFormTemplateOptionsAsync(
+        FormTemplateOptionCriteria criteria, CancellationToken cancellationToken)
+    {
+        var query = context.FormTemplates.AsNoTracking()
+            .Where(template => template.Status == FormTemplateStatus.Active
+                && context.FormTemplateVersions.Any(version =>
+                    version.FormTemplateId == template.Id
+                    && version.Status == FormTemplateVersionStatus.Published));
+
+        if (!string.IsNullOrWhiteSpace(criteria.Search))
+        {
+            var search = criteria.Search.Trim();
+            query = query.Where(template =>
+                template.Code.Contains(search) || template.Name.Contains(search));
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(template => template.Name)
+            .ThenBy(template => template.Code)
+            .ThenBy(template => template.Id)
+            .Skip((criteria.PageNumber - 1) * criteria.PageSize)
+            .Take(criteria.PageSize)
+            .Select(template => new FormTemplateOptionDto(
+                template.Id,
+                template.Code,
+                template.Name,
+                context.FormTemplateVersions
+                    .Where(version => version.FormTemplateId == template.Id
+                        && version.Status == FormTemplateVersionStatus.Published)
+                    .Max(version => version.VersionNumber)))
+            .ToArrayAsync(cancellationToken);
+
+        return new(items, criteria.PageNumber, criteria.PageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)criteria.PageSize));
     }
 
     private static IQueryable<Inspection> Scoped(IQueryable<Inspection> query, InspectionReadScope scope)

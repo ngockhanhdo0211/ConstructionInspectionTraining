@@ -17,7 +17,7 @@ Inspection Core chỉ bao gồm:
 3. UC14 — tạo Inspection ở trạng thái `Draft` cùng revision 1.
 4. UC15 — lưu current Draft revision nhiều lần bằng optimistic concurrency.
 
-Core có đúng bốn endpoint:
+Core có đúng bốn endpoint nghiệp vụ UC12–UC15:
 
 | Method | Route | CQRS | Use case |
 |---|---|---|---|
@@ -25,6 +25,14 @@ Core có đúng bốn endpoint:
 | `GET` | `/api/inspections/{id}` | `GetInspectionDetailQuery` | UC13 |
 | `POST` | `/api/inspections` | `CreateInspectionCommand` | UC14 |
 | `PUT` | `/api/inspections/{id}/draft` | `SaveInspectionDraftCommand` | UC15 |
+
+Frontend tạo Inspection dùng thêm đúng một support query, không phải use case hay transition mới:
+
+| Method | Route | CQRS | Mục đích |
+|---|---|---|---|
+| `GET` | `/api/inspections/form-template-options` | `GetFormTemplateOptionsQuery` | Tra cứu template khả dụng cho form tạo Inspection |
+
+Đây không phải Form Template management endpoint và không mở quyền tám management endpoint hiện hữu cho Inspector. Route tĩnh `form-template-options` không xung đột với detail vì route detail giữ constraint `{id:guid}`. Construction Object không có support endpoint mới: Inspector dùng `GET /api/construction-objects` hiện có với `search`, paging và active scope do server áp dụng.
 
 Không nằm trong checkpoint Core:
 
@@ -450,6 +458,7 @@ Matrix authorization cuối:
 | List | `401` | Own Inspection | Chỉ assigned; Core chưa có assigned Draft nên kết quả không chứa Draft | Tất cả trong scope quản lý hiện hành | Tất cả Inspection; list chỉ metadata |
 | Detail/DataJson | `401` | Own Inspection | Chỉ assigned; Core chưa có assigned Draft nên ngoài scope trả `404` | Tất cả trong scope quản lý hiện hành | Full detail và DataJson |
 | Read history | `401` | Không có endpoint Core | Không có endpoint Core | Không có endpoint Core | Không có endpoint Core |
+| Form Template creation options | `401` | Có | `403` | `403` | `403` |
 
 `docs/01` nói Manager xem dữ liệu trong phạm vi quản lý; MVP chưa có object-assignment table nên phạm vi Manager hiện là toàn bộ Construction Objects. Administrator được phép list và đọc full detail/DataJson theo ADR-INS-002. List DTO không trả DataJson; detail DTO mới trả DataJson. Không log DataJson và không đưa DataJson vào URL. Backend authorization là lớp bảo vệ cuối.
 
@@ -524,9 +533,21 @@ Trả:
 
 Không trả entity graph, Identity internals, template Draft, version khác, Process History hoặc revision cũ trong Core.
 
-### 13.5 Cancellation và response chung
+### 13.5 `GET /api/inspections/form-template-options`
 
-- Cả bốn endpoint nhận `CancellationToken` từ ASP.NET Core và truyền xuyên Controller → MediatR → repository/read service → EF Core.
+Role: chỉ Inspector. Anonymous nhận `401`; Reviewer, Manager và Administrator nhận `403`.
+
+Query:
+
+- `pageNumber` mặc định 1.
+- `pageSize` mặc định 20, tối đa 100.
+- `search` tùy chọn trên `Code` hoặc `Name`, tối đa 250 ký tự.
+
+Response là `PagedResult` và mỗi item chỉ có `formTemplateId`, `code`, `name`, `latestPublishedVersionNumber`. Query chỉ trả template `Active` có ít nhất một version `Published`; Draft-only và template Inactive bị loại. Version number là Published lớn nhất, không lấy Draft và không cho client chọn version cũ. Query dùng `AsNoTracking`, một projection SQL không N+1, thứ tự ổn định `Name`, `Code`, `Id`, paging và truyền `CancellationToken` tới EF Core. Không trả `SchemaJson`, DataJson, Draft, rowVersion, audit hoặc version history.
+
+### 13.6 Cancellation và response chung
+
+- Cả bốn endpoint nghiệp vụ và support query nhận `CancellationToken` từ ASP.NET Core và truyền xuyên Controller → MediatR → repository/read service → EF Core.
 - Query/list/detail dừng ngay khi request bị hủy; không retry ở Application.
 - Command chỉ rollback trước commit. Nếu client ngắt kết nối sau commit, dữ liệu đã commit vẫn là kết quả chuẩn; client phải GET để đối soát, không tự POST lại vì contract chưa idempotent.
 - `OperationCanceledException` do request abort không được đổi thành business ProblemDetails 500 và không log như lỗi server nghiêm trọng.
@@ -616,6 +637,7 @@ Việc trả `404` hay `409` cho template inactive phải thống nhất ở cod
 - Draft cho phép thiếu required nhưng không cho value sai kiểu.
 - Handler dùng transaction và không persistence khi validation thất bại.
 - Query validation cho paging/sort/filter.
+- Support query chỉ cho Inspector; forward paging/search đã trim và cancellation; role khác bị từ chối trước read service.
 
 ### 16.3 Integration tests
 
@@ -643,6 +665,9 @@ Chỉ dùng `ConnectionStrings:IntegrationTestConnection`. Factory phải giữ 
 - 2 MiB dùng UTF-8 bytes, gồm test ký tự đa byte.
 - Không có SQL binary/file hoặc object-storage call.
 - Regression Authentication, Construction Object, Drawing và Form Template vẫn pass.
+- Support query trả đúng latest Published của template Active, loại Draft-only/Inactive, có stable paging/search và không lộ field ngoài bốn field DTO.
+- Role matrix của support query là Inspector `200`, anonymous `401`, Reviewer/Manager/Administrator `403`.
+- Inspector dùng Construction Object list hiện có và chỉ thấy object active phù hợp để tạo Inspection; không thêm endpoint Construction Object.
 
 ## 17. Migration strategy sau khi được cho phép
 

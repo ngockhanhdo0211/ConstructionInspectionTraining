@@ -7,6 +7,7 @@ using ConstructionInspection.Application.Inspections;
 using ConstructionInspection.Application.Inspections.Commands;
 using ConstructionInspection.Application.Inspections.Interfaces;
 using ConstructionInspection.Application.Inspections.Models;
+using ConstructionInspection.Application.Inspections.Queries;
 using ConstructionInspection.Application.Inspections.Validation;
 using ConstructionInspection.Domain.Inspections;
 
@@ -159,6 +160,52 @@ public sealed class InspectionApplicationTests
         Assert.Equal("{}", Validator().ValidateDraft(requiredSchema, "{}").CanonicalJson);
     }
 
+    [Fact]
+    public async Task FormTemplateOptions_AsInspector_ForwardsNormalizedPagingSearchAndCancellation()
+    {
+        var repository = ReadyRepository();
+        var readService = new FakeReadService(repository)
+        {
+            Options = new([new(TemplateId, "FORM", "Form", 2)], 2, 5, 1, 1)
+        };
+        var handler = new GetFormTemplateOptionsQueryHandler(Inspector(), readService);
+        using var cancellation = new CancellationTokenSource();
+
+        var result = await handler.Handle(
+            new GetFormTemplateOptionsQuery(2, 5, "  safety  "), cancellation.Token);
+
+        Assert.Single(result.Items);
+        Assert.Equal(new FormTemplateOptionCriteria(2, 5, "safety"), readService.OptionCriteria);
+        Assert.Equal(cancellation.Token, readService.OptionCancellationToken);
+    }
+
+    [Theory]
+    [InlineData(ApplicationRoles.Administrator)]
+    [InlineData(ApplicationRoles.Manager)]
+    [InlineData(ApplicationRoles.Reviewer)]
+    public async Task FormTemplateOptions_NonInspector_IsForbiddenBeforeRead(string role)
+    {
+        var readService = new FakeReadService(ReadyRepository());
+        var handler = new GetFormTemplateOptionsQueryHandler(
+            new FakeUser(Actor, [role]), readService);
+
+        await Assert.ThrowsAsync<ForbiddenAccessException>(() =>
+            handler.Handle(new(), CancellationToken.None));
+
+        Assert.Null(readService.OptionCriteria);
+    }
+
+    [Fact]
+    public void FormTemplateOptions_ValidatesPagingAndSearch()
+    {
+        var validator = new GetFormTemplateOptionsQueryValidator();
+
+        Assert.False(validator.Validate(new GetFormTemplateOptionsQuery(0, 20, null)).IsValid);
+        Assert.False(validator.Validate(new GetFormTemplateOptionsQuery(1, 101, null)).IsValid);
+        Assert.False(validator.Validate(new GetFormTemplateOptionsQuery(1, 20, new string('x', 251))).IsValid);
+        Assert.True(validator.Validate(new GetFormTemplateOptionsQuery(2, 100, "safety")).IsValid);
+    }
+
     private static CreateInspectionCommandHandler CreateHandler(
         FakeRepository repository, ICurrentUser? user = null, FakeUnitOfWork? unit = null) => new(
         user ?? Inspector(), new FakeClock(), repository, new FakeReadService(repository),
@@ -229,6 +276,9 @@ public sealed class InspectionApplicationTests
 
     private sealed class FakeReadService(FakeRepository repository) : IInspectionReadService
     {
+        public PagedResult<FormTemplateOptionDto> Options { get; set; } = new([], 1, 20, 0, 0);
+        public FormTemplateOptionCriteria? OptionCriteria { get; private set; }
+        public CancellationToken OptionCancellationToken { get; private set; }
         public Task<PagedResult<InspectionListItemDto>> GetPageAsync(InspectionQueryCriteria criteria, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<InspectionDetailDto?> GetDetailAsync(Guid id, InspectionReadScope scope, CancellationToken cancellationToken)
         {
@@ -237,6 +287,13 @@ public sealed class InspectionApplicationTests
                 new(TemplateId, "FORM", "Form", VersionId, 2, Schema), p.Status, i.CreatedByUserId, i.ReviewerUserId,
                 i.CreatedAt, i.UpdatedAt, new(s.Id, 1, s.DataJson, s.CreatedAt, s.UpdatedAt, null, ""), "", "");
             return Task.FromResult<InspectionDetailDto?>(value);
+        }
+        public Task<PagedResult<FormTemplateOptionDto>> GetFormTemplateOptionsAsync(
+            FormTemplateOptionCriteria criteria, CancellationToken cancellationToken)
+        {
+            OptionCriteria = criteria;
+            OptionCancellationToken = cancellationToken;
+            return Task.FromResult(Options);
         }
     }
 }

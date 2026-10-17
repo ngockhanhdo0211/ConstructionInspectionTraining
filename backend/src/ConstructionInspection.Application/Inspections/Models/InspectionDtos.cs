@@ -25,3 +25,6 @@ public sealed record InspectionDetailDto(
 public sealed record InspectionDraftDto(
     Guid Id, int RevisionNumber, string DataJson, DateTime UpdatedAt,
     string InspectionRowVersion, string SubmissionRowVersion, string ProcessRowVersion);
+
+public sealed record FormTemplateOptionDto(
+    Guid FormTemplateId, string Code, string Name, int LatestPublishedVersionNumber);

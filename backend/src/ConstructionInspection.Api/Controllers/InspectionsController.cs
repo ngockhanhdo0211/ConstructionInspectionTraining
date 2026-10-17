@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ConstructionInspection.Application.Common.Authorization;
 using ConstructionInspection.Application.Common.Models;
 using ConstructionInspection.Application.Inspections.Commands;
 using ConstructionInspection.Application.Inspections.Models;
@@ -31,6 +32,16 @@ public sealed class InspectionsController(ISender sender) : ControllerBase
         sender.Send(new GetInspectionsQuery(
             pageNumber, pageSize, search, status, constructionObjectId,
             reviewerUserId, sortBy, sortDirection), cancellationToken);
+
+    [HttpGet("form-template-options")]
+    [Authorize(Roles = ApplicationRoles.Inspector)]
+    [ProducesResponseType<PagedResult<FormTemplateOptionDto>>(StatusCodes.Status200OK)]
+    public Task<PagedResult<FormTemplateOptionDto>> GetFormTemplateOptions(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null,
+        CancellationToken cancellationToken = default) =>
+        sender.Send(new GetFormTemplateOptionsQuery(pageNumber, pageSize, search), cancellationToken);
 
     [HttpGet("{id:guid}")]
     [ProducesResponseType<InspectionDetailDto>(StatusCodes.Status200OK)]
