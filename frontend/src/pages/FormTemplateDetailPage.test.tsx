@@ -61,7 +61,7 @@ describe('Form Template lifecycle UI', () => {
   })
 
   it('hides new-version action while a Draft exists and confirms permanent deactivation', async () => {
-    const user = userEvent.setup(); vi.mocked(getFormTemplateVersions).mockResolvedValue({ ...history, template: { ...template, draftVersionNumber: 7 } }); vi.mocked(deactivateFormTemplate).mockResolvedValue({ id: template.id, status: 'Inactive', updatedByUserId: 'u1', updatedAt: '2026-01-02T00:00:00Z', deactivatedByUserId: 'u1', deactivatedAt: '2026-01-02T00:00:00Z', rowVersion: 'new-rv' })
+    const user = userEvent.setup(); vi.mocked(getFormTemplateVersions).mockResolvedValue({ ...history, template: { ...template, draftVersionNumber: undefined } }); vi.mocked(deactivateFormTemplate).mockResolvedValue({ id: template.id, status: 'Inactive', updatedByUserId: 'u1', updatedAt: '2026-01-02T00:00:00Z', deactivatedByUserId: 'u1', deactivatedAt: '2026-01-02T00:00:00Z', rowVersion: 'new-rv' })
     renderPage(); await screen.findByRole('heading', { name: 'Draft' }); expect(screen.queryByRole('button', { name: 'Tạo Draft version mới' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Deactivate template' })); expect(confirm).toHaveBeenCalledWith(expect.stringContaining('không thể tạo, sửa hoặc publish'))
     expect(deactivateFormTemplate).toHaveBeenCalledWith(template.id, 'template-rv')

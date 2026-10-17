@@ -99,7 +99,7 @@ describe('Form Template UI', () => {
     const user = userEvent.setup(); let resolveCreate!: (value: Awaited<ReturnType<typeof createFormTemplate>>) => void
     vi.mocked(createFormTemplate).mockImplementation(() => new Promise(resolve => { resolveCreate = resolve }))
     renderWithProviders(<Routes><Route path="/form-templates/new" element={<NewFormTemplatePage />} /></Routes>, ['/form-templates/new'])
-    await user.click(screen.getByRole('button', { name: 'Tạo Draft v1' })); expect(screen.getByRole('alert')).toHaveTextContent('nhập mã, tên'); expect(createFormTemplate).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Tạo Draft v1' })); expect(screen.getByRole('alert')).toHaveTextContent('nhập mã, tên'); await waitFor(() => expect(screen.getByLabelText(/^Mã template/)).toHaveFocus()); expect(createFormTemplate).not.toHaveBeenCalled()
     await user.type(screen.getByLabelText(/^Mã template/), 'SAFE'); await user.type(screen.getByLabelText(/^Tên template/), 'Safety'); await user.click(screen.getByRole('button', { name: 'Tạo Draft v1' }))
     expect(createFormTemplate).toHaveBeenCalledOnce(); expect(screen.getByRole('button', { name: 'Đang tạo…' })).toBeDisabled()
     resolveCreate({ template: { id: 't1', code: 'SAFE', name: 'Safety', status: 'Active', nextVersionNumber: 2, rowVersion: 'trv' }, version: { id: 'v1', template: { id: 't1', code: 'SAFE', name: 'Safety', status: 'Active', nextVersionNumber: 2, rowVersion: 'trv' }, versionNumber: 1, status: 'Draft', schemaJson: '{"components":[]}', schemaUtf8ByteCount: 17, createdAt: '2026-01-01T00:00:00Z', createdByUserId: 'u1', rowVersion: 'vrv' } })
