@@ -41,3 +41,40 @@ export type FormTemplateDeactivated = {
   id: string; status: 'Inactive'; updatedAt?: string | null; updatedByUserId?: string | null
   deactivatedAt: string; deactivatedByUserId: string; rowVersion: string
 }
+
+export type InspectionStatus = 'Draft' | 'Submitted' | 'UnderReview' | 'Approved' | 'Recheck' | 'Rejected'
+export type InspectionListItem = {
+  id: string; number: string; title: string; constructionObjectId: string
+  formTemplateVersionId: string; formTemplateVersionNumber: number
+  status: InspectionStatus; createdByUserId: string; reviewerUserId?: string | null
+  createdAt: string; updatedAt?: string | null; rowVersion: string
+}
+export type InspectionSubmission = {
+  id: string; revisionNumber: number; dataJson: string; createdAt: string
+  updatedAt?: string | null; submittedAt?: string | null; rowVersion: string
+}
+export type InspectionTemplate = {
+  id: string; code: string; name: string; versionId: string; versionNumber: number; schemaJson: string
+}
+export type InspectionDetail = {
+  id: string; number: string; constructionObjectId: string; constructionObjectCode: string
+  constructionObjectName: string; title: string; description?: string | null
+  template: InspectionTemplate; status: InspectionStatus; createdByUserId: string
+  reviewerUserId?: string | null; createdAt: string; updatedAt?: string | null
+  currentRevision: InspectionSubmission; rowVersion: string; processRowVersion: string
+}
+export type FormTemplateOption = {
+  formTemplateId: string; code: string; name: string; latestPublishedVersionNumber: number
+}
+export type CreateInspectionInput = {
+  constructionObjectId: string; formTemplateId: string; title: string
+  description?: string | null; data: Record<string, unknown>
+}
+export type SaveInspectionDraftInput = {
+  data: Record<string, unknown>; inspectionRowVersion: string
+  submissionRowVersion: string; processRowVersion: string
+}
+export type InspectionDraft = {
+  id: string; revisionNumber: number; dataJson: string; updatedAt: string
+  inspectionRowVersion: string; submissionRowVersion: string; processRowVersion: string
+}

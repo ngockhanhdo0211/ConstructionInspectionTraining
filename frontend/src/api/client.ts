@@ -1,4 +1,4 @@
-import type { CreateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated } from './types'
+import type { CreateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft } from './types'
 
 export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5277').replace(/\/$/, '')
 let getToken: () => string | null = () => null
@@ -58,6 +58,28 @@ export const createFormTemplateVersion = (id: string, schemaJson: string, templa
   request<FormTemplateVersionDetail>(`/api/form-templates/${encodeURIComponent(id)}/versions`, { method: 'POST', body: JSON.stringify({ schemaJson, templateRowVersion }) })
 export const deactivateFormTemplate = (id: string, rowVersion: string) =>
   request<FormTemplateDeactivated>(`/api/form-templates/${encodeURIComponent(id)}/deactivate`, { method: 'POST', body: JSON.stringify({ rowVersion }) })
+
+export type InspectionListParameters = {
+  pageNumber: number; pageSize: number; search?: string; status?: InspectionStatus | ''
+  sortBy?: 'number' | 'title' | 'status' | 'createdAt' | 'updatedAt'; sortDirection?: 'asc' | 'desc'
+}
+function queryString(parameters: Record<string, string | number | undefined>) {
+  const search = new URLSearchParams()
+  Object.entries(parameters).forEach(([key, value]) => { if (value !== undefined && value !== '') search.set(key, String(value)) })
+  return search.toString()
+}
+export const getInspections = (parameters: InspectionListParameters, signal?: AbortSignal) =>
+  request<PagedResult<InspectionListItem>>(`/api/inspections?${queryString(parameters)}`, { signal })
+export const getInspection = (id: string, signal?: AbortSignal) =>
+  request<InspectionDetail>(`/api/inspections/${encodeURIComponent(id)}`, { signal })
+export const getInspectionConstructionObjects = (pageNumber: number, pageSize: number, search = '', signal?: AbortSignal) =>
+  request<PagedResult<ConstructionObjectListItem>>(`/api/construction-objects?${queryString({ pageNumber, pageSize, isActive: 'true', sortBy: 'name', sortDirection: 'asc', search })}`, { signal })
+export const getInspectionFormTemplateOptions = (pageNumber: number, pageSize: number, search = '', signal?: AbortSignal) =>
+  request<PagedResult<FormTemplateOption>>(`/api/inspections/form-template-options?${queryString({ pageNumber, pageSize, search })}`, { signal })
+export const createInspection = (input: CreateInspectionInput) =>
+  request<InspectionDetail>('/api/inspections', { method: 'POST', body: JSON.stringify(input) })
+export const saveInspectionDraft = (id: string, input: SaveInspectionDraftInput) =>
+  request<InspectionDraft>(`/api/inspections/${encodeURIComponent(id)}/draft`, { method: 'PUT', body: JSON.stringify(input) })
 
 export function uploadDrawing(file: File, onProgress: (value: number) => void): Promise<UploadResponse> {
   return new Promise((resolve, reject) => {

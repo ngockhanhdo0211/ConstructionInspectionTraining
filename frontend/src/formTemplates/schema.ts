@@ -1,12 +1,14 @@
 export const componentTypes = ['textfield', 'textarea', 'number', 'select', 'radio', 'checkbox', 'datetime'] as const
 export type ComponentType = typeof componentTypes[number]
+export type FormOptionValue = string | number | boolean
+export type FormOption = { label: string; value: FormOptionValue }
 export type FormComponent = {
   type: ComponentType; key: string; label: string; description?: string; placeholder?: string; tooltip?: string
   input?: boolean; tableView?: boolean; hidden?: boolean; disabled?: boolean; defaultValue?: string | number | boolean
   validate?: Record<string, string | number | boolean>; prefix?: string; suffix?: string; spellcheck?: boolean
   rows?: number; autoExpand?: boolean; decimalLimit?: number; requireDecimal?: boolean
-  dataSrc?: 'values'; data?: { values: { label: string; value: string }[] }; multiple?: boolean
-  values?: { label: string; value: string }[]; inline?: boolean; format?: string; enableDate?: boolean; enableTime?: boolean
+  dataSrc?: 'values'; data?: { values: FormOption[] }; multiple?: boolean
+  values?: FormOption[]; inline?: boolean; format?: string; enableDate?: boolean; enableTime?: boolean
 }
 export type FormSchema = { components: FormComponent[] }
 
