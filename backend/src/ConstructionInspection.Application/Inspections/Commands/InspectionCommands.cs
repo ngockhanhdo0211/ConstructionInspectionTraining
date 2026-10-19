@@ -87,8 +87,9 @@ public sealed class SaveInspectionDraftCommandHandler(
         {
             var aggregate = await repository.GetForUpdateAsync(request.Id, ct)
                 ?? throw new ResourceNotFoundException("inspection.not_found", "The Inspection was not found.");
-            if (aggregate.Inspection.CreatedByUserId != actorId) throw new ForbiddenAccessException();
-            aggregate.Process.EnsureDraft();
+            if (aggregate.Inspection.CreatedByUserId != actorId)
+                throw new ResourceNotFoundException("inspection.not_found", "The Inspection was not found.");
+            aggregate.Process.EnsureEditable();
             InspectionRowVersion.EnsureMatches(aggregate.Inspection.RowVersion, request.InspectionRowVersion, nameof(request.InspectionRowVersion));
             InspectionRowVersion.EnsureMatches(aggregate.Submission.RowVersion, request.SubmissionRowVersion, nameof(request.SubmissionRowVersion));
             InspectionRowVersion.EnsureMatches(aggregate.Process.RowVersion, request.ProcessRowVersion, nameof(request.ProcessRowVersion));
@@ -97,16 +98,38 @@ public sealed class SaveInspectionDraftCommandHandler(
                 ?? throw new ConflictException("inspection.form_template_unavailable", "The pinned Form Template version is unavailable.");
             var validated = dataValidator.ValidateDraft(version.SchemaJson, request.DataJson);
             var now = clock.UtcNow;
-            aggregate.Submission.UpdateDraft(validated.CanonicalJson, actorId, now);
-            aggregate.Inspection.MarkDraftUpdated(actorId, now);
+            var currentSubmission = aggregate.Submission;
+            if (aggregate.Process.Status == InspectionStatus.Recheck && currentSubmission.SubmittedAt.HasValue)
+            {
+                var newSubmissionId = Guid.NewGuid();
+                var revisionNumber = aggregate.Inspection.AllocateRevision(newSubmissionId, actorId, now);
+                currentSubmission = InspectionSubmission.CreateRevision(
+                    newSubmissionId,
+                    aggregate.Inspection.Id,
+                    revisionNumber,
+                    aggregate.Submission.DataJson,
+                    actorId,
+                    now);
+                currentSubmission.UpdateDraft(validated.CanonicalJson, actorId, now);
+                repository.AddSubmission(currentSubmission);
+                repository.AddHistory(ProcessHistory.Create(
+                    Guid.NewGuid(), aggregate.Process.Id,
+                    InspectionStatus.Recheck, InspectionStatus.Recheck,
+                    "CreateRevision", actorId, now, currentSubmission.Id));
+            }
+            else
+            {
+                currentSubmission.UpdateDraft(validated.CanonicalJson, actorId, now);
+                aggregate.Inspection.MarkDraftUpdated(actorId, now);
+            }
             await unitOfWork.SaveChangesAsync(ct);
             return new InspectionDraftDto(
                 aggregate.Inspection.Id,
-                aggregate.Submission.RevisionNumber,
-                aggregate.Submission.DataJson,
+                currentSubmission.RevisionNumber,
+                currentSubmission.DataJson,
                 now,
                 Convert.ToBase64String(aggregate.Inspection.RowVersion),
-                Convert.ToBase64String(aggregate.Submission.RowVersion),
+                Convert.ToBase64String(currentSubmission.RowVersion),
                 Convert.ToBase64String(aggregate.Process.RowVersion));
         }, cancellationToken);
     }

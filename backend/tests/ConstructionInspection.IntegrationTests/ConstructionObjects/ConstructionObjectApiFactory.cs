@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.AspNetCore.Identity;
 
 namespace ConstructionInspection.IntegrationTests.ConstructionObjects;
 
@@ -158,6 +159,55 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         EnsureSafeDatabase(context.Database.GetConnectionString());
         await operation(context);
+    }
+
+    public async Task<Guid> CreateUserAsync(string email, string fullName, string role)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var password = configuration["SeedUsers:DefaultPassword"]
+            ?? throw new InvalidOperationException("SeedUsers:DefaultPassword is required for integration tests.");
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            FullName = fullName,
+            IsActive = true,
+            LockoutEnabled = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        EnsureSucceeded(await userManager.CreateAsync(user, password));
+        EnsureSucceeded(await userManager.AddToRoleAsync(user, role));
+        return user.Id;
+    }
+
+    public async Task SetUserActiveAsync(string email, bool isActive)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByEmailAsync(email)
+            ?? throw new InvalidOperationException("Integration-test user was not found.");
+        user.IsActive = isActive;
+        EnsureSucceeded(await userManager.UpdateAsync(user));
+    }
+
+    public async Task RemoveUserRoleAsync(string email, string role)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByEmailAsync(email)
+            ?? throw new InvalidOperationException("Integration-test user was not found.");
+        EnsureSucceeded(await userManager.RemoveFromRoleAsync(user, role));
+    }
+
+    private static void EnsureSucceeded(IdentityResult result)
+    {
+        if (!result.Succeeded)
+            throw new InvalidOperationException(
+                $"Integration-test Identity operation failed: {string.Join(",", result.Errors.Select(x => x.Code))}");
     }
 
     private static void EnsureSafeDatabase(string? connectionString)

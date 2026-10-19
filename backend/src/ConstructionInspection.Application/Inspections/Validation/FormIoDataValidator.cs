@@ -11,6 +11,12 @@ namespace ConstructionInspection.Application.Inspections.Validation;
 public sealed class FormIoDataValidator(IFormIoSchemaValidator schemaValidator) : IFormIoDataValidator
 {
     public ValidatedFormIoData ValidateDraft(string schemaJson, string dataJson)
+        => Validate(schemaJson, dataJson, requireComplete: false);
+
+    public ValidatedFormIoData ValidateSubmit(string schemaJson, string dataJson)
+        => Validate(schemaJson, dataJson, requireComplete: true);
+
+    private ValidatedFormIoData Validate(string schemaJson, string dataJson, bool requireComplete)
     {
         var schema = schemaValidator.Validate(schemaJson);
         if (Encoding.UTF8.GetByteCount(dataJson) > InspectionRules.MaximumDataUtf8Bytes)
@@ -34,6 +40,17 @@ public sealed class FormIoDataValidator(IFormIoSchemaValidator schemaValidator) 
             ValidateValue(component, property.Value);
         }
 
+        if (requireComplete)
+        {
+            foreach (var component in components.Values)
+            {
+                if (!IsRequired(component)) continue;
+                var key = component.GetProperty("key").GetString()!;
+                if (!dataDocument.RootElement.TryGetProperty(key, out var value) || IsMissing(value, component))
+                    Fail($"Response key '{key}' is required.");
+            }
+        }
+
         ScanDangerous(dataDocument.RootElement);
         var canonical = JsonSerializer.Serialize(dataDocument.RootElement);
         var bytes = Encoding.UTF8.GetByteCount(canonical);
@@ -42,6 +59,20 @@ public sealed class FormIoDataValidator(IFormIoSchemaValidator schemaValidator) 
                 "Inspection DataJson exceeds 2 MiB UTF-8 bytes.",
                 "inspection.form_data_too_large");
         return new(canonical, bytes);
+    }
+
+    private static bool IsRequired(JsonElement component) =>
+        component.TryGetProperty("validate", out var validation)
+        && validation.TryGetProperty("required", out var required)
+        && required.ValueKind == JsonValueKind.True;
+
+    private static bool IsMissing(JsonElement value, JsonElement component)
+    {
+        if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return true;
+        if (value.ValueKind == JsonValueKind.String) return string.IsNullOrWhiteSpace(value.GetString());
+        if (value.ValueKind == JsonValueKind.Array) return value.GetArrayLength() == 0;
+        return component.GetProperty("type").GetString() == "checkbox"
+            && value.ValueKind == JsonValueKind.False;
     }
 
     private static JsonDocument Parse(string json, string message)

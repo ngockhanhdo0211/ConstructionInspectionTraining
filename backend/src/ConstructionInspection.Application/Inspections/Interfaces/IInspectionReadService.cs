@@ -10,6 +10,8 @@ public sealed record InspectionQueryCriteria(
     InspectionReadScope Scope);
 
 public sealed record FormTemplateOptionCriteria(int PageNumber, int PageSize, string? Search);
+public sealed record InspectionHistoryCriteria(Guid InspectionId, int PageNumber, int PageSize, InspectionReadScope Scope);
+public sealed record InspectionRevisionCriteria(Guid InspectionId, int PageNumber, int PageSize, InspectionReadScope Scope);
 
 public interface IInspectionReadService
 {
@@ -17,4 +19,10 @@ public interface IInspectionReadService
     Task<InspectionDetailDto?> GetDetailAsync(Guid id, InspectionReadScope scope, CancellationToken cancellationToken);
     Task<PagedResult<FormTemplateOptionDto>> GetFormTemplateOptionsAsync(
         FormTemplateOptionCriteria criteria, CancellationToken cancellationToken);
+    Task<PagedResult<ProcessHistoryDto>?> GetHistoryAsync(
+        InspectionHistoryCriteria criteria, CancellationToken cancellationToken);
+    Task<PagedResult<InspectionRevisionListItemDto>?> GetRevisionsAsync(
+        InspectionRevisionCriteria criteria, CancellationToken cancellationToken);
+    Task<InspectionRevisionDetailDto?> GetRevisionDetailAsync(
+        Guid inspectionId, int revisionNumber, InspectionReadScope scope, CancellationToken cancellationToken);
 }

@@ -72,6 +72,7 @@ public static class DependencyInjection
         services.AddScoped<IFormTemplateReadService, FormTemplateReadService>();
         services.AddScoped<IInspectionRepository, InspectionRepository>();
         services.AddScoped<IInspectionReadService, InspectionReadService>();
+        services.AddScoped<IInspectionReviewerService, InspectionReviewerService>();
         services.AddScoped<IInspectionNumberSequence, InspectionNumberSequence>();
         services.AddSingleton<IUploadStagingStore, TemporaryFileStagingStore>();
         services.AddSingleton<IPdfMetadataReader, PdfSharpMetadataReader>();

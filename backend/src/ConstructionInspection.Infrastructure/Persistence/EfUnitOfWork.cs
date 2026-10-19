@@ -69,6 +69,13 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
                     "The Inspection already has a Business Process.");
             }
 
+            if (sqlMessage.Contains("UX_InspectionSubmissions_InspectionId_RevisionNumber", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ConflictException(
+                    "inspection.concurrency_conflict",
+                    "The Inspection revision number was allocated by another request.");
+            }
+
             if (sqlMessage.Contains("UX_FormTemplates_Code", StringComparison.OrdinalIgnoreCase))
             {
                 throw new ConflictException(

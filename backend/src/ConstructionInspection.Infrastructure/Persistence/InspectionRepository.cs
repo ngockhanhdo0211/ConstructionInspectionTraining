@@ -74,4 +74,9 @@ public sealed class InspectionRepository(ApplicationDbContext context) : IInspec
         context.BusinessProcesses.Add(process);
         context.ProcessHistories.Add(history);
     }
+
+    public void AddSubmission(InspectionSubmission submission) =>
+        context.InspectionSubmissions.Add(submission);
+
+    public void AddHistory(ProcessHistory history) => context.ProcessHistories.Add(history);
 }

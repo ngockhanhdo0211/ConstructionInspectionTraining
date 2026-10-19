@@ -17,4 +17,6 @@ public interface IInspectionRepository
     Task<PinnedTemplateVersion?> GetPinnedVersionAsync(Guid id, CancellationToken cancellationToken);
     void AddInspection(Inspection inspection);
     void AddFoundation(InspectionSubmission submission, BusinessProcess process, ProcessHistory history);
+    void AddSubmission(InspectionSubmission submission);
+    void AddHistory(ProcessHistory history);
 }

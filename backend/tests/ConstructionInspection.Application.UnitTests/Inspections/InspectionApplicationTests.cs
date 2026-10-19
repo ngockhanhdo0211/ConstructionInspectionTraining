@@ -19,6 +19,7 @@ public sealed class InspectionApplicationTests
     private static readonly Guid ObjectId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private static readonly Guid TemplateId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     private static readonly Guid VersionId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+    private static readonly Guid ReviewerId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     private static readonly DateTime Now = new(2026, 10, 17, 2, 0, 0, DateTimeKind.Utc);
     private const string Schema = "{\"components\":[{\"type\":\"checkbox\",\"key\":\"ok\",\"label\":\"OK\"}]}";
 
@@ -35,6 +36,7 @@ public sealed class InspectionApplicationTests
         Assert.NotNull(repository.Inspection);
         Assert.Equal(VersionId, repository.Inspection.FormTemplateVersionId);
         Assert.Null(repository.Inspection.ReviewerUserId);
+        Assert.Equal(2, repository.Inspection.NextRevisionNumber);
         Assert.Equal(1, repository.Submission!.RevisionNumber);
         Assert.Equal(InspectionStatus.Draft, repository.Process!.Status);
         Assert.Equal("Create", repository.History!.Action);
@@ -100,7 +102,7 @@ public sealed class InspectionApplicationTests
         var handler = new SaveInspectionDraftCommandHandler(
             new FakeUser(Guid.NewGuid(), [ApplicationRoles.Inspector]), new FakeClock(),
             repository, Validator(), new FakeUnitOfWork());
-        await Assert.ThrowsAsync<ForbiddenAccessException>(() => handler.Handle(new(
+        await Assert.ThrowsAsync<ResourceNotFoundException>(() => handler.Handle(new(
             repository.Inspection!.Id, "{}", "", "", ""), CancellationToken.None));
     }
 
@@ -158,6 +160,285 @@ public sealed class InspectionApplicationTests
     {
         const string requiredSchema = "{\"components\":[{\"type\":\"textfield\",\"key\":\"name\",\"label\":\"Name\",\"validate\":{\"required\":true}}]}";
         Assert.Equal("{}", Validator().ValidateDraft(requiredSchema, "{}").CanonicalJson);
+    }
+
+    [Fact]
+    public void DataValidator_SubmitRequiresConfiguredRequiredField()
+    {
+        const string requiredSchema = "{\"components\":[{\"type\":\"textfield\",\"key\":\"name\",\"label\":\"Name\",\"validate\":{\"required\":true}}]}";
+        var error = Assert.Throws<BadRequestException>(() =>
+            Validator().ValidateSubmit(requiredSchema, "{}"));
+        Assert.Equal("inspection.form_data_invalid", error.Code);
+        Assert.Equal("{\"name\":\"Ready\"}",
+            Validator().ValidateSubmit(requiredSchema, "{\"name\":\"Ready\"}").CanonicalJson);
+    }
+
+    [Fact]
+    public async Task Submit_AssignsEligibleReviewer_ValidatesPinnedSchemaAndWritesHistory()
+    {
+        var repository = ReadyRepository();
+        SeedAggregate(repository);
+        var reviewers = EligibleReviewers();
+        var unit = new FakeUnitOfWork();
+        var handler = new SubmitInspectionCommandHandler(
+            Inspector(), new FakeClock(), repository, reviewers, Validator(), unit);
+
+        var result = await handler.Handle(new(
+            repository.Inspection!.Id, ReviewerId, "", "", ""), CancellationToken.None);
+
+        Assert.Equal(InspectionStatus.Submitted, result.Status);
+        Assert.Equal(ReviewerId, repository.Inspection.ReviewerUserId);
+        Assert.Equal(ReviewerId, repository.Process!.AssignedToUserId);
+        Assert.NotNull(repository.Submission!.SubmittedAt);
+        Assert.Equal("Submit", repository.History!.Action);
+        Assert.Equal(ReviewerId, repository.History.NewAssignedToUserId);
+        Assert.Equal(1, unit.TransactionCount);
+        Assert.Equal(1, unit.SaveCount);
+    }
+
+    [Fact]
+    public async Task Submit_IneligibleReviewer_IsConflictInsideTransaction()
+    {
+        var repository = ReadyRepository();
+        SeedAggregate(repository);
+        var reviewers = new FakeReviewerService
+        {
+            Reviewer = new(ReviewerId, "Disabled", false, true)
+        };
+        var unit = new FakeUnitOfWork();
+        var handler = new SubmitInspectionCommandHandler(
+            Inspector(), new FakeClock(), repository, reviewers, Validator(), unit);
+
+        var error = await Assert.ThrowsAsync<ConflictException>(() => handler.Handle(new(
+            repository.Inspection!.Id, ReviewerId, "", "", ""), CancellationToken.None));
+
+        Assert.Equal("inspection.reviewer_invalid", error.Code);
+        Assert.Equal(1, unit.TransactionCount);
+        Assert.Equal(0, unit.SaveCount);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("role-removed")]
+    [InlineData("self-review")]
+    public async Task Submit_RejectsEveryReviewerEligibilityFailure(string scenario)
+    {
+        var repository = ReadyRepository();
+        SeedAggregate(repository);
+        var reviewerId = scenario == "self-review" ? Actor : ReviewerId;
+        var reviewers = new FakeReviewerService
+        {
+            Reviewer = scenario switch
+            {
+                "missing" => null,
+                "role-removed" => new(ReviewerId, "Reviewer", true, false),
+                _ => new(Actor, "Creator", true, true)
+            }
+        };
+        var handler = new SubmitInspectionCommandHandler(
+            Inspector(), new FakeClock(), repository, reviewers, Validator(), new FakeUnitOfWork());
+
+        var error = await Assert.ThrowsAsync<ConflictException>(() => handler.Handle(new(
+            repository.Inspection!.Id, reviewerId, "", "", ""), CancellationToken.None));
+
+        Assert.Equal(
+            scenario == "self-review" ? "inspection.self_review_forbidden" : "inspection.reviewer_invalid",
+            error.Code);
+    }
+
+    [Theory]
+    [InlineData("inspection")]
+    [InlineData("submission")]
+    [InlineData("process")]
+    public async Task Submit_RejectsEachStaleAggregateRowVersion(string staleToken)
+    {
+        var repository = ReadyRepository();
+        SeedAggregate(repository);
+        var handler = new SubmitInspectionCommandHandler(
+            Inspector(), new FakeClock(), repository, EligibleReviewers(), Validator(), new FakeUnitOfWork());
+
+        var error = await Assert.ThrowsAsync<ConflictException>(() => handler.Handle(new(
+            repository.Inspection!.Id,
+            ReviewerId,
+            staleToken == "inspection" ? "AA==" : "",
+            staleToken == "submission" ? "AA==" : "",
+            staleToken == "process" ? "AA==" : ""), CancellationToken.None));
+
+        Assert.Equal("inspection.concurrency_conflict", error.Code);
+    }
+
+    [Fact]
+    public async Task ReviewerActions_RequireStartReviewAndReachRecheck()
+    {
+        var repository = ReadyRepository();
+        SeedSubmitted(repository);
+        var reviewers = EligibleReviewers();
+        var reviewer = new FakeUser(ReviewerId, [ApplicationRoles.Reviewer]);
+
+        var premature = new ApproveInspectionCommandHandler(
+            reviewer, new FakeClock(), repository, reviewers, new FakeUnitOfWork());
+        Assert.Equal("inspection.invalid_state", (await Assert.ThrowsAsync<InspectionDomainException>(() =>
+            premature.Handle(new(repository.Inspection!.Id, null, ""), CancellationToken.None))).Code);
+
+        await new StartInspectionReviewCommandHandler(
+            reviewer, new FakeClock(), repository, reviewers, new FakeUnitOfWork())
+            .Handle(new(repository.Inspection!.Id, ""), CancellationToken.None);
+        await new RequestInspectionRecheckCommandHandler(
+            reviewer, new FakeClock(), repository, reviewers, new FakeUnitOfWork())
+            .Handle(new(repository.Inspection.Id, "Correct values", ""), CancellationToken.None);
+
+        Assert.Equal(InspectionStatus.Recheck, repository.Process!.Status);
+        Assert.Equal("RequestRecheck", repository.History!.Action);
+        Assert.Equal("Correct values", repository.History.Note);
+    }
+
+    [Theory]
+    [InlineData("approve", InspectionStatus.Approved, "Approve")]
+    [InlineData("reject", InspectionStatus.Rejected, "Reject")]
+    public async Task ReviewerDecision_CompletesAndWritesExactHistory(
+        string decision, InspectionStatus expectedStatus, string expectedAction)
+    {
+        var repository = ReadyRepository();
+        SeedSubmitted(repository);
+        repository.Process!.StartReview(ReviewerId, Now);
+        var reviewer = new FakeUser(ReviewerId, [ApplicationRoles.Reviewer]);
+        var reviewers = EligibleReviewers();
+        var unit = new FakeUnitOfWork();
+
+        var result = decision == "approve"
+            ? await new ApproveInspectionCommandHandler(
+                reviewer, new FakeClock(), repository, reviewers, unit)
+                .Handle(new(repository.Inspection!.Id, "Looks good", ""), CancellationToken.None)
+            : await new RejectInspectionCommandHandler(
+                reviewer, new FakeClock(), repository, reviewers, unit)
+                .Handle(new(repository.Inspection!.Id, "Not compliant", ""), CancellationToken.None);
+
+        Assert.Equal(expectedStatus, result.Status);
+        Assert.NotNull(result.CompletedAt);
+        Assert.Equal(expectedAction, repository.History!.Action);
+        Assert.Equal(InspectionStatus.UnderReview, repository.History.FromStatus);
+        Assert.Equal(expectedStatus, repository.History.ToStatus);
+    }
+
+    [Fact]
+    public async Task Reassign_FromUnderReview_ReturnsSubmittedAndAuditsReviewers()
+    {
+        var repository = ReadyRepository();
+        SeedSubmitted(repository);
+        repository.Process!.StartReview(ReviewerId, Now);
+        var replacement = Guid.NewGuid();
+        var reviewers = new FakeReviewerService
+        {
+            Reviewer = new(replacement, "Replacement", true, true)
+        };
+        var handler = new ReassignInspectionReviewerCommandHandler(
+            new FakeUser(Actor, [ApplicationRoles.Manager]), new FakeClock(),
+            repository, reviewers, new FakeUnitOfWork());
+
+        var result = await handler.Handle(new(
+            repository.Inspection!.Id, replacement, "Coverage", "", ""), CancellationToken.None);
+
+        Assert.Equal(InspectionStatus.Submitted, result.Status);
+        Assert.Equal(ReviewerId, repository.History!.PreviousAssignedToUserId);
+        Assert.Equal(replacement, repository.History.NewAssignedToUserId);
+        Assert.Equal(InspectionStatus.UnderReview, repository.History.FromStatus);
+        Assert.Equal(InspectionStatus.Submitted, repository.History.ToStatus);
+    }
+
+    [Fact]
+    public async Task Reassign_RemovesOldReviewerObjectScope()
+    {
+        var repository = ReadyRepository();
+        SeedSubmitted(repository);
+        var replacement = Guid.NewGuid();
+        var reviewers = new FakeReviewerService
+        {
+            Reviewer = new(replacement, "Replacement", true, true)
+        };
+        await new ReassignInspectionReviewerCommandHandler(
+            new FakeUser(Actor, [ApplicationRoles.Administrator]), new FakeClock(),
+            repository, reviewers, new FakeUnitOfWork()).Handle(new(
+                repository.Inspection!.Id, replacement, "Coverage", "", ""), CancellationToken.None);
+
+        var oldReviewerAction = new StartInspectionReviewCommandHandler(
+            new FakeUser(ReviewerId, [ApplicationRoles.Reviewer]), new FakeClock(),
+            repository, reviewers, new FakeUnitOfWork());
+
+        await Assert.ThrowsAsync<ResourceNotFoundException>(() => oldReviewerAction.Handle(
+            new(repository.Inspection.Id, ""), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SaveFirstRecheck_AllocatesOneRevisionThenUpdatesItWithoutExtraHistory()
+    {
+        var repository = ReadyRepository();
+        SeedSubmitted(repository);
+        repository.Process!.StartReview(ReviewerId, Now);
+        repository.Process.RequestRecheck(ReviewerId, "Correct", Now);
+        var handler = new SaveInspectionDraftCommandHandler(
+            Inspector(), new FakeClock(), repository, Validator(), new FakeUnitOfWork());
+
+        var first = await handler.Handle(new(
+            repository.Inspection!.Id, "{\"ok\":true}", "", "", ""), CancellationToken.None);
+        var createdHistoryCount = repository.Histories.Count;
+        var oldData = "{}";
+        var second = await handler.Handle(new(
+            repository.Inspection.Id, "{\"ok\":false}", "", "", ""), CancellationToken.None);
+
+        Assert.Equal(2, first.RevisionNumber);
+        Assert.Equal(2, second.RevisionNumber);
+        Assert.Equal(3, repository.Inspection.NextRevisionNumber);
+        Assert.Equal(createdHistoryCount, repository.Histories.Count);
+        Assert.Equal("CreateRevision", repository.History!.Action);
+        Assert.Equal(oldData, repository.Submissions.Single(x => x.RevisionNumber == 1).DataJson);
+        Assert.Equal("{\"ok\":false}", repository.Submission!.DataJson);
+    }
+
+    [Fact]
+    public async Task ReviewerOptions_ForwardsNormalizedCriteriaAndCancellation()
+    {
+        var service = EligibleReviewers();
+        var handler = new GetReviewerOptionsQueryHandler(Inspector(), service);
+        using var cancellation = new CancellationTokenSource();
+
+        await handler.Handle(new(2, 5, "  review  "), cancellation.Token);
+
+        Assert.Equal(new ReviewerOptionCriteria(2, 5, "review"), service.Criteria);
+        Assert.Equal(cancellation.Token, service.CancellationToken);
+    }
+
+    [Fact]
+    public async Task HistoryAndRevisionQueries_ForwardReadScopePagingAndCancellation()
+    {
+        var repository = ReadyRepository();
+        var readService = new FakeReadService(repository);
+        var historyHandler = new GetInspectionHistoryQueryHandler(Inspector(), readService);
+        var revisionsHandler = new GetInspectionRevisionsQueryHandler(Inspector(), readService);
+        using var cancellation = new CancellationTokenSource();
+        var id = Guid.NewGuid();
+
+        await historyHandler.Handle(new(id, 2, 5), cancellation.Token);
+        await revisionsHandler.Handle(new(id, 3, 10), cancellation.Token);
+
+        Assert.Equal(id, readService.HistoryCriteria!.InspectionId);
+        Assert.Equal(2, readService.HistoryCriteria.PageNumber);
+        Assert.Equal(Actor, readService.HistoryCriteria.Scope.UserId);
+        Assert.Equal(id, readService.RevisionCriteria!.InspectionId);
+        Assert.Equal(3, readService.RevisionCriteria.PageNumber);
+        Assert.Equal(cancellation.Token, readService.WorkflowQueryCancellationToken);
+    }
+
+    [Fact]
+    public void WorkflowValidators_RejectMissingReasonAndConcurrencyTokens()
+    {
+        Assert.False(new RejectInspectionCommandValidator().Validate(
+            new RejectInspectionCommand(Guid.NewGuid(), "", "")).IsValid);
+        Assert.False(new RequestInspectionRecheckCommandValidator().Validate(
+            new RequestInspectionRecheckCommand(Guid.NewGuid(), " ", "")).IsValid);
+        Assert.False(new ReassignInspectionReviewerCommandValidator().Validate(
+            new ReassignInspectionReviewerCommand(Guid.NewGuid(), ReviewerId, "", "", "")).IsValid);
+        Assert.False(new SubmitInspectionCommandValidator().Validate(
+            new SubmitInspectionCommand(Guid.NewGuid(), ReviewerId, "", "", "")).IsValid);
     }
 
     [Fact]
@@ -219,6 +500,10 @@ public sealed class InspectionApplicationTests
         Template = new(TemplateId, true, VersionId, 2, Schema),
         Pinned = new(VersionId, Schema)
     };
+    private static FakeReviewerService EligibleReviewers() => new()
+    {
+        Reviewer = new(ReviewerId, "Reviewer", true, true)
+    };
 
     private static void SeedAggregate(FakeRepository repository)
     {
@@ -229,6 +514,15 @@ public sealed class InspectionApplicationTests
         repository.Inspection = inspection;
         repository.Submission = submission;
         repository.Process = process;
+        repository.Submissions.Add(submission);
+    }
+
+    private static void SeedSubmitted(FakeRepository repository)
+    {
+        SeedAggregate(repository);
+        repository.Inspection!.AssignReviewer(ReviewerId, Now);
+        repository.Process!.Submit(ReviewerId, Now);
+        repository.Submission!.Submit(Now);
     }
 
     private sealed class FakeUser(Guid? id, IReadOnlyCollection<string> roles) : ICurrentUser
@@ -262,6 +556,8 @@ public sealed class InspectionApplicationTests
         public InspectionSubmission? Submission { get; set; }
         public BusinessProcess? Process { get; set; }
         public ProcessHistory? History { get; private set; }
+        public List<ProcessHistory> Histories { get; } = [];
+        public List<InspectionSubmission> Submissions { get; } = [];
         public Guid? PinnedVersionRequested { get; private set; }
         public Task<InspectionObjectForCreate?> GetObjectForCreateAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(Object);
         public Task<InspectionTemplateForCreate?> GetTemplateForCreateAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(Template);
@@ -271,7 +567,30 @@ public sealed class InspectionApplicationTests
         { PinnedVersionRequested = id; return Task.FromResult(Pinned); }
         public void AddInspection(Inspection inspection) => Inspection = inspection;
         public void AddFoundation(InspectionSubmission submission, BusinessProcess process, ProcessHistory history)
-        { Submission = submission; Process = process; History = history; }
+        { Submission = submission; Process = process; History = history; Submissions.Add(submission); Histories.Add(history); }
+        public void AddSubmission(InspectionSubmission submission)
+        { Submission = submission; Submissions.Add(submission); }
+        public void AddHistory(ProcessHistory history)
+        { History = history; Histories.Add(history); }
+    }
+
+    private sealed class FakeReviewerService : IInspectionReviewerService
+    {
+        public ReviewerEligibility? Reviewer { get; set; }
+        public ReviewerOptionCriteria? Criteria { get; private set; }
+        public CancellationToken CancellationToken { get; private set; }
+        public Task<ReviewerEligibility?> GetForAssignmentAsync(Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult(Reviewer?.UserId == userId ? Reviewer : null);
+        public Task<PagedResult<ReviewerOptionDto>> GetOptionsAsync(
+            ReviewerOptionCriteria criteria, CancellationToken cancellationToken)
+        {
+            Criteria = criteria;
+            CancellationToken = cancellationToken;
+            IReadOnlyCollection<ReviewerOptionDto> items = Reviewer is null
+                ? [] : [new(Reviewer.UserId, Reviewer.DisplayName)];
+            return Task.FromResult(new PagedResult<ReviewerOptionDto>(
+                items, criteria.PageNumber, criteria.PageSize, items.Count, items.Count));
+        }
     }
 
     private sealed class FakeReadService(FakeRepository repository) : IInspectionReadService
@@ -279,6 +598,9 @@ public sealed class InspectionApplicationTests
         public PagedResult<FormTemplateOptionDto> Options { get; set; } = new([], 1, 20, 0, 0);
         public FormTemplateOptionCriteria? OptionCriteria { get; private set; }
         public CancellationToken OptionCancellationToken { get; private set; }
+        public InspectionHistoryCriteria? HistoryCriteria { get; private set; }
+        public InspectionRevisionCriteria? RevisionCriteria { get; private set; }
+        public CancellationToken WorkflowQueryCancellationToken { get; private set; }
         public Task<PagedResult<InspectionListItemDto>> GetPageAsync(InspectionQueryCriteria criteria, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<InspectionDetailDto?> GetDetailAsync(Guid id, InspectionReadScope scope, CancellationToken cancellationToken)
         {
@@ -295,5 +617,22 @@ public sealed class InspectionApplicationTests
             OptionCancellationToken = cancellationToken;
             return Task.FromResult(Options);
         }
+        public Task<PagedResult<ProcessHistoryDto>?> GetHistoryAsync(
+            InspectionHistoryCriteria criteria, CancellationToken cancellationToken)
+        {
+            HistoryCriteria = criteria;
+            WorkflowQueryCancellationToken = cancellationToken;
+            return Task.FromResult<PagedResult<ProcessHistoryDto>?>(new([], criteria.PageNumber, criteria.PageSize, 0, 0));
+        }
+        public Task<PagedResult<InspectionRevisionListItemDto>?> GetRevisionsAsync(
+            InspectionRevisionCriteria criteria, CancellationToken cancellationToken)
+        {
+            RevisionCriteria = criteria;
+            WorkflowQueryCancellationToken = cancellationToken;
+            return Task.FromResult<PagedResult<InspectionRevisionListItemDto>?>(new([], criteria.PageNumber, criteria.PageSize, 0, 0));
+        }
+        public Task<InspectionRevisionDetailDto?> GetRevisionDetailAsync(
+            Guid inspectionId, int revisionNumber, InspectionReadScope scope, CancellationToken cancellationToken) =>
+            Task.FromResult<InspectionRevisionDetailDto?>(null);
     }
 }

@@ -11,11 +11,13 @@ public sealed class InspectionConfiguration : IEntityTypeConfiguration<Inspectio
 {
     public void Configure(EntityTypeBuilder<Inspection> builder)
     {
-        builder.ToTable("Inspections");
+        builder.ToTable("Inspections", table =>
+            table.HasCheckConstraint("CK_Inspections_NextRevisionNumber", "[NextRevisionNumber] >= 2"));
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Number).HasMaxLength(InspectionRules.MaximumNumberLength).IsRequired();
         builder.Property(x => x.Title).HasMaxLength(InspectionRules.MaximumTitleLength).IsRequired();
         builder.Property(x => x.Description).HasMaxLength(InspectionRules.MaximumDescriptionLength);
+        builder.Property(x => x.NextRevisionNumber).IsRequired();
         builder.Property(x => x.CreatedAt).HasPrecision(7).IsRequired();
         builder.Property(x => x.UpdatedAt).HasPrecision(7);
         builder.Property(x => x.RowVersion).IsRowVersion();
@@ -64,7 +66,9 @@ public sealed class BusinessProcessConfiguration : IEntityTypeConfiguration<Busi
         builder.ToTable("BusinessProcesses", table =>
         {
             table.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] = 'Inspection'");
-            table.HasCheckConstraint("CK_BusinessProcesses_Status", "[Status] = 'Draft'");
+            table.HasCheckConstraint(
+                "CK_BusinessProcesses_Status",
+                "[Status] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
         });
         builder.HasKey(x => x.Id);
         builder.Property(x => x.EntityType).HasConversion<string>().HasMaxLength(20).IsUnicode(false).IsRequired();
@@ -89,8 +93,12 @@ public sealed class ProcessHistoryConfiguration : IEntityTypeConfiguration<Proce
     {
         builder.ToTable("ProcessHistories", table =>
         {
-            table.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] = 'Draft'");
-            table.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] = 'Create'");
+            table.HasCheckConstraint(
+                "CK_ProcessHistories_ToStatus",
+                "[ToStatus] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
+            table.HasCheckConstraint(
+                "CK_ProcessHistories_Action",
+                "[Action] IN ('Create','Submit','StartReview','Approve','Reject','RequestRecheck','ReassignReviewer','CreateRevision')");
         });
         builder.HasKey(x => x.Id);
         builder.Property(x => x.FromStatus).HasConversion<string>().HasMaxLength(30).IsUnicode(false);
@@ -102,6 +110,8 @@ public sealed class ProcessHistoryConfiguration : IEntityTypeConfiguration<Proce
             .HasDatabaseName("IX_ProcessHistories_BusinessProcessId_PerformedAt_Id");
         builder.HasOne<BusinessProcess>().WithMany().HasForeignKey(x => x.BusinessProcessId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.PerformedByUserId).OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.PreviousAssignedToUserId).OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.NewAssignedToUserId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<InspectionSubmission>().WithMany().HasForeignKey(x => x.SubmissionId).OnDelete(DeleteBehavior.NoAction);
     }
 }

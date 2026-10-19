@@ -25,6 +25,32 @@ internal static class InspectionAuthorization
         return new(id, administrator || manager, inspector, reviewer);
     }
 
+    public static Guid RequireReviewer(ICurrentUser user)
+    {
+        var id = RequireAuthenticated(user);
+        if (!user.IsInRole(ApplicationRoles.Reviewer)) throw new ForbiddenAccessException();
+        return id;
+    }
+
+    public static Guid RequireManagerOrAdministrator(ICurrentUser user)
+    {
+        var id = RequireAuthenticated(user);
+        if (!user.IsInRole(ApplicationRoles.Manager)
+            && !user.IsInRole(ApplicationRoles.Administrator))
+            throw new ForbiddenAccessException();
+        return id;
+    }
+
+    public static Guid RequireReviewerLookup(ICurrentUser user)
+    {
+        var id = RequireAuthenticated(user);
+        if (!user.IsInRole(ApplicationRoles.Inspector)
+            && !user.IsInRole(ApplicationRoles.Manager)
+            && !user.IsInRole(ApplicationRoles.Administrator))
+            throw new ForbiddenAccessException();
+        return id;
+    }
+
     private static Guid RequireAuthenticated(ICurrentUser user) =>
         user.UserId ?? throw new AuthenticationFailedException();
 }

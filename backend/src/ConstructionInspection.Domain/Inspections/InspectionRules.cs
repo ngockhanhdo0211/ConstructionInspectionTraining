@@ -7,6 +7,7 @@ public static class InspectionRules
     public const int MaximumNumberLength = 50;
     public const int MaximumTitleLength = 250;
     public const int MaximumDescriptionLength = 2000;
+    public const int MaximumWorkflowNoteLength = 2000;
     public const int MaximumDataUtf8Bytes = 2 * 1024 * 1024;
     public const int MaximumJsonDepth = 16;
 

@@ -128,6 +128,116 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
             total == 0 ? 0 : (int)Math.Ceiling(total / (double)criteria.PageSize));
     }
 
+    public async Task<PagedResult<ProcessHistoryDto>?> GetHistoryAsync(
+        InspectionHistoryCriteria criteria, CancellationToken cancellationToken)
+    {
+        var processId = await Scoped(context.Inspections.AsNoTracking(), criteria.Scope)
+            .Where(x => x.Id == criteria.InspectionId)
+            .Select(x => context.BusinessProcesses.Where(p => p.InspectionId == x.Id).Select(p => p.Id).Single())
+            .SingleOrDefaultAsync(cancellationToken);
+        if (processId == Guid.Empty) return null;
+
+        var query = context.ProcessHistories.AsNoTracking().Where(x => x.BusinessProcessId == processId);
+        var total = await query.CountAsync(cancellationToken);
+        var rows = await query
+            .OrderByDescending(x => x.PerformedAt)
+            .ThenByDescending(x => x.Id)
+            .Skip((criteria.PageNumber - 1) * criteria.PageSize)
+            .Take(criteria.PageSize)
+            .Select(x => new
+            {
+                History = x,
+                ActorName = context.Users.Where(u => u.Id == x.PerformedByUserId).Select(u => u.FullName).Single(),
+                PreviousName = x.PreviousAssignedToUserId.HasValue
+                    ? context.Users.Where(u => u.Id == x.PreviousAssignedToUserId.Value).Select(u => u.FullName).SingleOrDefault()
+                    : null,
+                NewName = x.NewAssignedToUserId.HasValue
+                    ? context.Users.Where(u => u.Id == x.NewAssignedToUserId.Value).Select(u => u.FullName).SingleOrDefault()
+                    : null
+            })
+            .ToArrayAsync(cancellationToken);
+        var items = rows.Select(x => new ProcessHistoryDto(
+            x.History.Id, x.History.Action, x.History.FromStatus, x.History.ToStatus,
+            x.History.PerformedByUserId, x.ActorName,
+            x.History.PreviousAssignedToUserId, x.PreviousName,
+            x.History.NewAssignedToUserId, x.NewName,
+            x.History.Note, x.History.PerformedAt, x.History.SubmissionId)).ToArray();
+        return new(items, criteria.PageNumber, criteria.PageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)criteria.PageSize));
+    }
+
+    public async Task<PagedResult<InspectionRevisionListItemDto>?> GetRevisionsAsync(
+        InspectionRevisionCriteria criteria, CancellationToken cancellationToken)
+    {
+        var inspection = await Scoped(context.Inspections.AsNoTracking(), criteria.Scope)
+            .Where(x => x.Id == criteria.InspectionId)
+            .Select(x => new { x.Id, x.CurrentSubmissionId })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (inspection is null) return null;
+
+        var query = context.InspectionSubmissions.AsNoTracking().Where(x => x.InspectionId == inspection.Id);
+        var total = await query.CountAsync(cancellationToken);
+        var rows = await query
+            .OrderByDescending(x => x.RevisionNumber)
+            .ThenByDescending(x => x.Id)
+            .Skip((criteria.PageNumber - 1) * criteria.PageSize)
+            .Take(criteria.PageSize)
+            .Select(x => new
+            {
+                Submission = x,
+                CreatorName = context.Users.Where(u => u.Id == x.CreatedByUserId).Select(u => u.FullName).Single()
+            })
+            .ToArrayAsync(cancellationToken);
+        var items = rows.Select(x => new InspectionRevisionListItemDto(
+            x.Submission.Id, x.Submission.RevisionNumber,
+            x.Submission.CreatedByUserId, x.CreatorName,
+            x.Submission.CreatedAt, x.Submission.UpdatedAt, x.Submission.SubmittedAt,
+            x.Submission.SubmittedAt.HasValue, x.Submission.Id == inspection.CurrentSubmissionId,
+            Convert.ToBase64String(x.Submission.RowVersion))).ToArray();
+        return new(items, criteria.PageNumber, criteria.PageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)criteria.PageSize));
+    }
+
+    public async Task<InspectionRevisionDetailDto?> GetRevisionDetailAsync(
+        Guid inspectionId,
+        int revisionNumber,
+        InspectionReadScope scope,
+        CancellationToken cancellationToken)
+    {
+        var row = await (
+            from inspection in Scoped(context.Inspections.AsNoTracking(), scope)
+            where inspection.Id == inspectionId
+            join submission in context.InspectionSubmissions.AsNoTracking()
+                on inspection.Id equals submission.InspectionId
+            where submission.RevisionNumber == revisionNumber
+            join creator in context.Users.AsNoTracking() on submission.CreatedByUserId equals creator.Id
+            join version in context.FormTemplateVersions.AsNoTracking()
+                on inspection.FormTemplateVersionId equals version.Id
+            join template in context.FormTemplates.AsNoTracking() on version.FormTemplateId equals template.Id
+            select new
+            {
+                Inspection = inspection,
+                Submission = submission,
+                CreatorName = creator.FullName,
+                TemplateId = template.Id,
+                template.Code,
+                template.Name,
+                VersionId = version.Id,
+                version.VersionNumber,
+                version.SchemaJson
+            }).SingleOrDefaultAsync(cancellationToken);
+        if (row is null) return null;
+
+        return new(
+            row.Inspection.Id, row.Submission.Id, row.Submission.RevisionNumber,
+            row.Submission.DataJson, row.Submission.CreatedByUserId, row.CreatorName,
+            row.Submission.CreatedAt, row.Submission.UpdatedAt, row.Submission.SubmittedAt,
+            row.Submission.SubmittedAt.HasValue,
+            row.Submission.Id == row.Inspection.CurrentSubmissionId,
+            Convert.ToBase64String(row.Submission.RowVersion),
+            new(row.TemplateId, row.Code, row.Name, row.VersionId, row.VersionNumber, row.SchemaJson));
+    }
+
     private static IQueryable<Inspection> Scoped(IQueryable<Inspection> query, InspectionReadScope scope)
     {
         if (scope.CanReadAll) return query;

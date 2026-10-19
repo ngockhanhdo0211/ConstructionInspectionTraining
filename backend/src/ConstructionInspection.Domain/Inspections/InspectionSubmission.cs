@@ -31,6 +31,26 @@ public sealed class InspectionSubmission
         };
     }
 
+    public static InspectionSubmission CreateRevision(
+        Guid id, Guid inspectionId, int revisionNumber, string dataJson,
+        Guid actorId, DateTime createdAtUtc)
+    {
+        if (id == Guid.Empty || inspectionId == Guid.Empty || actorId == Guid.Empty)
+            throw InspectionRules.Error("inspection.invalid_identity", "Submission, Inspection and actor identifiers are required.");
+        if (revisionNumber < 2)
+            throw InspectionRules.Error("inspection.invalid_revision", "A new revision number must be at least 2.");
+        EnsureData(dataJson);
+        return new InspectionSubmission
+        {
+            Id = id,
+            InspectionId = inspectionId,
+            RevisionNumber = revisionNumber,
+            DataJson = dataJson,
+            CreatedByUserId = actorId,
+            CreatedAt = InspectionRules.EnsureUtc(createdAtUtc)
+        };
+    }
+
     public void UpdateDraft(string dataJson, Guid actorId, DateTime updatedAtUtc)
     {
         if (SubmittedAt.HasValue)
@@ -40,6 +60,14 @@ public sealed class InspectionSubmission
         EnsureData(dataJson);
         DataJson = dataJson;
         UpdatedAt = InspectionRules.EnsureUtc(updatedAtUtc);
+    }
+
+    public void Submit(DateTime submittedAtUtc)
+    {
+        if (SubmittedAt.HasValue)
+            throw InspectionRules.Error("inspection.revision_immutable", "A submitted revision is immutable.");
+        SubmittedAt = InspectionRules.EnsureUtc(submittedAtUtc);
+        UpdatedAt = SubmittedAt;
     }
 
     private static void EnsureData(string dataJson)

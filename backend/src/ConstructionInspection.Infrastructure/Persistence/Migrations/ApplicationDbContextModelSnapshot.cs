@@ -521,7 +521,7 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] = 'Inspection'");
 
-                            t.HasCheckConstraint("CK_BusinessProcesses_Status", "[Status] = 'Draft'");
+                            t.HasCheckConstraint("CK_BusinessProcesses_Status", "[Status] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
                         });
                 });
 
@@ -550,6 +550,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("FormTemplateVersionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("NextRevisionNumber")
+                        .HasColumnType("int");
 
                     b.Property<string>("Number")
                         .IsRequired()
@@ -597,7 +600,10 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .IsDescending(false, true)
                         .HasDatabaseName("IX_Inspections_ReviewerUserId_CreatedAt");
 
-                    b.ToTable("Inspections", (string)null);
+                    b.ToTable("Inspections", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Inspections_NextRevisionNumber", "[NextRevisionNumber] >= 2");
+                        });
                 });
 
             modelBuilder.Entity("ConstructionInspection.Domain.Inspections.InspectionSubmission", b =>
@@ -674,6 +680,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .IsUnicode(false)
                         .HasColumnType("varchar(30)");
 
+                    b.Property<Guid?>("NewAssignedToUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Note")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
@@ -683,6 +692,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2(7)");
 
                     b.Property<Guid>("PerformedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PreviousAssignedToUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("SubmissionId")
@@ -696,7 +708,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("NewAssignedToUserId");
+
                     b.HasIndex("PerformedByUserId");
+
+                    b.HasIndex("PreviousAssignedToUserId");
 
                     b.HasIndex("SubmissionId");
 
@@ -705,9 +721,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ProcessHistories", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] = 'Create'");
+                            t.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] IN ('Create','Submit','StartReview','Approve','Reject','RequestRecheck','ReassignReviewer','CreateRevision')");
 
-                            t.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] = 'Draft'");
+                            t.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
                         });
                 });
 
@@ -1137,9 +1153,19 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
+                        .HasForeignKey("NewAssignedToUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
                         .HasForeignKey("PerformedByUserId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousAssignedToUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("ConstructionInspection.Domain.Inspections.InspectionSubmission", null)
                         .WithMany()
