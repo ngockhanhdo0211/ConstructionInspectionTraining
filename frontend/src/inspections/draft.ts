@@ -35,6 +35,14 @@ export function validateDraftTypes(schema: FormSchema, values: DraftValues) {
   return errors
 }
 
+export function validateRequired(schema: FormSchema, values: DraftValues) {
+  const errors = validateDraftTypes(schema, values)
+  schema.components.forEach(component => {
+    if (requiredIncomplete(component, values)) errors[component.key] = 'Trường này là bắt buộc trước khi Submit.'
+  })
+  return errors
+}
+
 export function requiredIncomplete(component: FormComponent, values: DraftValues) {
   if (component.validate?.required !== true) return false
   const value = values[component.key]

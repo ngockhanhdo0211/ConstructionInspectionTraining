@@ -182,6 +182,23 @@
 .inspection-check input, .inspection-choice input { width: auto; min-height: auto; }
 .incomplete { color: var(--color-warning, #8a5700); font-size: var(--text-sm); }
 .inspection-draft > .form-actions { padding: 0 var(--space-5) var(--space-5); }
+.workflow-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); padding: 0 var(--space-5) var(--space-5); }
+.workflow-panel { min-width: 0; display: grid; gap: var(--space-4); margin-block-start: var(--space-6); padding: var(--space-5); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-surface); }
+.history-list, .revision-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.history-list li { min-width: 0; padding: var(--space-4); border-inline-start: 3px solid var(--color-accent); background: var(--color-paper); overflow-wrap: anywhere; }
+.history-list li > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); }
+.history-list p, .history-list blockquote { margin: var(--space-2) 0 0; }
+.history-list blockquote { padding-inline-start: var(--space-3); border-inline-start: var(--rule-thin) solid var(--color-rule); white-space: pre-wrap; }
+.revision-list button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); padding: var(--space-3); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-sm); background: var(--color-paper); color: var(--color-text); text-align: start; cursor: pointer; }
+.revision-list button.selected { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent); }
+.revision-list small { grid-column: 1/-1; color: var(--color-muted); }
+.historical-revision { min-width: 0; border-block-start: var(--rule-thin) solid var(--color-rule); }
+.modal-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: var(--space-5); background: rgb(15 23 42 / 55%); }
+.workflow-modal { width: min(32rem, 100%); max-height: calc(100dvh - 2 * var(--space-5)); overflow: auto; display: grid; gap: var(--space-3); padding: var(--space-6); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: 0 1rem 3rem rgb(15 23 42 / 30%); }
+.workflow-modal h2, .workflow-modal p { margin: 0; }
+.workflow-modal label { font-weight: 600; }
+.workflow-modal input, .workflow-modal select, .workflow-modal textarea { width: 100%; min-height: 2.75rem; padding: var(--space-2) var(--space-3); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-sm); background: var(--color-paper); color: var(--color-ink); }
+.workflow-modal textarea { min-height: 7rem; resize: vertical; }
 .status.submitted, .status.underreview, .status.recheck { border-color: var(--color-accent); color: var(--color-accent) !important; }
 .status.approved { border-color: var(--color-success); color: var(--color-success) !important; }
 .status.rejected { border-color: var(--color-error); color: var(--color-error) !important; }

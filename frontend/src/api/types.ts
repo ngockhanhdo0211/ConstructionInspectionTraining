@@ -63,6 +63,30 @@ export type InspectionDetail = {
   reviewerUserId?: string | null; createdAt: string; updatedAt?: string | null
   currentRevision: InspectionSubmission; rowVersion: string; processRowVersion: string
 }
+export type ReviewerOption = { userId: string; displayName: string }
+export type InspectionWorkflowResult = {
+  inspectionId: string; status: InspectionStatus; reviewerUserId?: string | null
+  currentRevisionNumber: number; completedAt?: string | null
+  inspectionRowVersion: string; submissionRowVersion: string; processRowVersion: string
+}
+export type ProcessHistory = {
+  id: string; action: string; fromStatus?: InspectionStatus | null; toStatus: InspectionStatus
+  actorUserId: string; actorDisplayName: string
+  previousReviewerUserId?: string | null; previousReviewerDisplayName?: string | null
+  newReviewerUserId?: string | null; newReviewerDisplayName?: string | null
+  reason?: string | null; createdAt: string; submissionId?: string | null
+}
+export type InspectionRevisionListItem = {
+  id: string; revisionNumber: number; createdByUserId: string; createdByDisplayName: string
+  createdAt: string; updatedAt?: string | null; submittedAt?: string | null
+  isImmutable: boolean; isCurrent: boolean; rowVersion: string
+}
+export type InspectionRevisionDetail = {
+  inspectionId: string; id: string; revisionNumber: number; dataJson: string
+  createdByUserId: string; createdByDisplayName: string; createdAt: string
+  updatedAt?: string | null; submittedAt?: string | null; isImmutable: boolean
+  isCurrent: boolean; rowVersion: string; template: InspectionTemplate
+}
 export type FormTemplateOption = {
   formTemplateId: string; code: string; name: string; latestPublishedVersionNumber: number
 }

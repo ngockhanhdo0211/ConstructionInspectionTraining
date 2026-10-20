@@ -1,4 +1,4 @@
-import type { CreateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft } from './types'
+import type { CreateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft, ReviewerOption, InspectionWorkflowResult, ProcessHistory, InspectionRevisionListItem, InspectionRevisionDetail } from './types'
 
 export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5277').replace(/\/$/, '')
 let getToken: () => string | null = () => null
@@ -80,6 +80,26 @@ export const createInspection = (input: CreateInspectionInput) =>
   request<InspectionDetail>('/api/inspections', { method: 'POST', body: JSON.stringify(input) })
 export const saveInspectionDraft = (id: string, input: SaveInspectionDraftInput) =>
   request<InspectionDraft>(`/api/inspections/${encodeURIComponent(id)}/draft`, { method: 'PUT', body: JSON.stringify(input) })
+export const getInspectionReviewerOptions = (pageNumber: number, pageSize: number, search = '', signal?: AbortSignal) =>
+  request<PagedResult<ReviewerOption>>(`/api/inspections/reviewer-options?${queryString({ pageNumber, pageSize, search })}`, { signal })
+export const submitInspection = (id: string, reviewerUserId: string, inspectionRowVersion: string, submissionRowVersion: string, processRowVersion: string) =>
+  request<InspectionWorkflowResult>(`/api/inspections/${encodeURIComponent(id)}/submit`, { method: 'POST', body: JSON.stringify({ reviewerUserId, inspectionRowVersion, submissionRowVersion, processRowVersion }) })
+export const startInspectionReview = (id: string, processRowVersion: string) =>
+  request<InspectionWorkflowResult>(`/api/inspections/${encodeURIComponent(id)}/start-review`, { method: 'POST', body: JSON.stringify({ processRowVersion }) })
+export const approveInspection = (id: string, comment: string | null, processRowVersion: string) =>
+  request<InspectionWorkflowResult>(`/api/inspections/${encodeURIComponent(id)}/approve`, { method: 'POST', body: JSON.stringify({ comment, processRowVersion }) })
+export const rejectInspection = (id: string, reason: string, processRowVersion: string) =>
+  request<InspectionWorkflowResult>(`/api/inspections/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason, processRowVersion }) })
+export const requestInspectionRecheck = (id: string, reason: string, processRowVersion: string) =>
+  request<InspectionWorkflowResult>(`/api/inspections/${encodeURIComponent(id)}/recheck`, { method: 'POST', body: JSON.stringify({ reason, processRowVersion }) })
+export const reassignInspectionReviewer = (id: string, reviewerUserId: string, reason: string, inspectionRowVersion: string, processRowVersion: string) =>
+  request<InspectionWorkflowResult>(`/api/inspections/${encodeURIComponent(id)}/reassign-reviewer`, { method: 'POST', body: JSON.stringify({ reviewerUserId, reason, inspectionRowVersion, processRowVersion }) })
+export const getInspectionHistory = (id: string, pageNumber: number, pageSize: number, signal?: AbortSignal) =>
+  request<PagedResult<ProcessHistory>>(`/api/inspections/${encodeURIComponent(id)}/history?${queryString({ pageNumber, pageSize })}`, { signal })
+export const getInspectionRevisions = (id: string, pageNumber: number, pageSize: number, signal?: AbortSignal) =>
+  request<PagedResult<InspectionRevisionListItem>>(`/api/inspections/${encodeURIComponent(id)}/revisions?${queryString({ pageNumber, pageSize })}`, { signal })
+export const getInspectionRevision = (id: string, revisionNumber: number, signal?: AbortSignal) =>
+  request<InspectionRevisionDetail>(`/api/inspections/${encodeURIComponent(id)}/revisions/${revisionNumber}`, { signal })
 
 export function uploadDrawing(file: File, onProgress: (value: number) => void): Promise<UploadResponse> {
   return new Promise((resolve, reject) => {

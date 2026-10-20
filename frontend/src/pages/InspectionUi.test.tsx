@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, createInspection, getInspection, getInspectionConstructionObjects, getInspectionFormTemplateOptions, getInspections, saveInspectionDraft } from '../api/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError, approveInspection, createInspection, getInspection, getInspectionConstructionObjects, getInspectionFormTemplateOptions, getInspectionHistory, getInspectionReviewerOptions, getInspectionRevision, getInspectionRevisions, getInspections, reassignInspectionReviewer, rejectInspection, requestInspectionRecheck, saveInspectionDraft, startInspectionReview, submitInspection } from '../api/client'
 import type { InspectionDetail } from '../api/types'
 import { AuthProvider, useAuth } from '../auth/AuthContext'
 import { AppShell } from '../components/AppShell'
@@ -14,7 +14,7 @@ import { NewInspectionPage } from './NewInspectionPage'
 
 vi.mock('../api/client', async importOriginal => {
   const actual = await importOriginal<typeof import('../api/client')>()
-  return { ...actual, getInspections: vi.fn(), getInspection: vi.fn(), getInspectionConstructionObjects: vi.fn(), getInspectionFormTemplateOptions: vi.fn(), createInspection: vi.fn(), saveInspectionDraft: vi.fn() }
+  return { ...actual, getInspections: vi.fn(), getInspection: vi.fn(), getInspectionConstructionObjects: vi.fn(), getInspectionFormTemplateOptions: vi.fn(), createInspection: vi.fn(), saveInspectionDraft: vi.fn(), getInspectionReviewerOptions: vi.fn(), submitInspection: vi.fn(), startInspectionReview: vi.fn(), approveInspection: vi.fn(), rejectInspection: vi.fn(), requestInspectionRecheck: vi.fn(), reassignInspectionReviewer: vi.fn(), getInspectionHistory: vi.fn(), getInspectionRevisions: vi.fn(), getInspectionRevision: vi.fn() }
 })
 
 const emptyPage = { items: [], pageNumber: 1, pageSize: 20, totalCount: 0, totalPages: 0 }
@@ -30,6 +30,10 @@ const detail: InspectionDetail = {
 }
 
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.resetAllMocks(); vi.restoreAllMocks() })
+beforeEach(() => {
+  vi.mocked(getInspectionHistory).mockResolvedValue(emptyPage)
+  vi.mocked(getInspectionRevisions).mockResolvedValue(emptyPage)
+})
 
 describe('Inspection Draft UI', () => {
   it('shows Inspection navigation and Create only to Inspector', async () => {
@@ -146,6 +150,62 @@ describe('Inspection Draft UI', () => {
   it('fails closed when the pinned schema contains an unsupported component', async () => {
     setSession('INSPECTOR'); vi.mocked(getInspection).mockResolvedValue({ ...detail, template: { ...detail.template, schemaJson: '{"components":[{"type":"html","key":"x","label":"X"}]}' } }); renderDetail()
     expect(await screen.findByRole('alert')).toHaveTextContent('Pinned schema không thể hiển thị an toàn'); expect(screen.queryByRole('button', { name: 'Lưu Draft' })).not.toBeInTheDocument()
+  })
+  it('blocks Submit until required data is saved, then selects a Reviewer', async () => {
+    const user = userEvent.setup(); setSession('INSPECTOR')
+    vi.mocked(getInspection).mockResolvedValue({ ...detail, currentRevision: { ...detail.currentRevision, dataJson: '{}' } })
+    vi.mocked(getInspectionReviewerOptions).mockResolvedValue({ ...emptyPage, items: [{ userId: 'reviewer-1', displayName: 'Demo Reviewer' }], totalCount: 1, totalPages: 1 })
+    vi.mocked(saveInspectionDraft).mockResolvedValue({ id: 'i1', revisionNumber: 1, dataJson: '{"summary":"complete"}', updatedAt: '2026-10-18T02:00:00Z', inspectionRowVersion: 'i2', submissionRowVersion: 's2', processRowVersion: 'p2' })
+    vi.mocked(submitInspection).mockResolvedValue({ inspectionId: 'i1', status: 'Submitted', reviewerUserId: 'reviewer-1', currentRevisionNumber: 1, completedAt: null, inspectionRowVersion: 'i3', submissionRowVersion: 's3', processRowVersion: 'p3' })
+    renderDetail(); await user.click(await screen.findByRole('button', { name: 'Submit' })); expect(await screen.findByText('Trường này là bắt buộc trước khi Submit.')).toBeInTheDocument(); expect(submitInspection).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText(/Summary/), 'complete'); expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled(); await user.click(screen.getByRole('button', { name: /Lưu Draft/ })); await screen.findByText(/Ba rowVersion/)
+    await user.click(screen.getByRole('button', { name: 'Submit' })); await user.selectOptions(await screen.findByLabelText('Reviewer *'), 'reviewer-1'); await user.click(screen.getByRole('button', { name: 'Xác nhận' }))
+    expect(submitInspection).toHaveBeenCalledWith('i1', 'reviewer-1', 'i2', 's2', 'p2'); expect(await screen.findByText('Submitted')).toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
+  })
+
+  it('shows assigned Reviewer actions and uses the fresh process rowVersion', async () => {
+    const user = userEvent.setup(); setSession('REVIEWER'); vi.mocked(getInspection).mockResolvedValue({ ...detail, status: 'Submitted', reviewerUserId: 'u1' }); vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(startInspectionReview).mockResolvedValue({ inspectionId: 'i1', status: 'UnderReview', reviewerUserId: 'u1', currentRevisionNumber: 1, completedAt: null, inspectionRowVersion: 'i2', submissionRowVersion: 's2', processRowVersion: 'p2' })
+    vi.mocked(approveInspection).mockResolvedValue({ inspectionId: 'i1', status: 'Approved', reviewerUserId: 'u1', currentRevisionNumber: 1, completedAt: '2026-10-18T03:00:00Z', inspectionRowVersion: 'i3', submissionRowVersion: 's3', processRowVersion: 'p3' })
+    renderDetail(); await user.click(await screen.findByRole('button', { name: 'Start Review' })); expect(startInspectionReview).toHaveBeenCalledWith('i1', 'process-rv')
+    await user.click(await screen.findByRole('button', { name: 'Approve' })); await user.click(screen.getByRole('button', { name: 'Xác nhận' })); expect(approveInspection).toHaveBeenCalledWith('i1', null, 'p2'); expect(await screen.findByText('Approved')).toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument()
+  })
+
+  it('requires reason and another Reviewer for Manager reassignment', async () => {
+    const user = userEvent.setup(); setSession('MANAGER'); vi.mocked(getInspection).mockResolvedValue({ ...detail, status: 'UnderReview', reviewerUserId: 'old-reviewer' })
+    vi.mocked(getInspectionReviewerOptions).mockResolvedValue({ ...emptyPage, items: [{ userId: 'old-reviewer', displayName: 'Old Reviewer' }, { userId: 'new-reviewer', displayName: 'New Reviewer' }], totalCount: 2, totalPages: 1 })
+    vi.mocked(reassignInspectionReviewer).mockResolvedValue({ inspectionId: 'i1', status: 'Submitted', reviewerUserId: 'new-reviewer', currentRevisionNumber: 1, completedAt: null, inspectionRowVersion: 'i2', submissionRowVersion: 's2', processRowVersion: 'p2' })
+    renderDetail(); await user.click(await screen.findByRole('button', { name: 'Reassign Reviewer' })); const select = await screen.findByLabelText('Reviewer mới *'); expect(screen.queryByRole('option', { name: 'Old Reviewer' })).not.toBeInTheDocument(); await user.selectOptions(select, 'new-reviewer'); expect(screen.getByRole('button', { name: 'Xác nhận' })).toBeDisabled()
+    await user.type(screen.getByLabelText('Lý do *'), 'Workload balance'); await user.click(screen.getByRole('button', { name: 'Xác nhận' })); expect(reassignInspectionReviewer).toHaveBeenCalledWith('i1', 'new-reviewer', 'Workload balance', 'inspection-rv', 'process-rv'); expect(await screen.findByText('Submitted')).toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+  })
+
+  it.each([{ button: 'Reject', api: rejectInspection }, { button: 'Request Recheck', api: requestInspectionRecheck }])('requires a reason for $button', async ({ button, api }) => {
+    const user = userEvent.setup(); setSession('REVIEWER'); vi.mocked(getInspection).mockResolvedValue({ ...detail, status: 'UnderReview', reviewerUserId: 'u1' })
+    renderDetail(); await user.click(await screen.findByRole('button', { name: button })); expect(screen.getByRole('button', { name: 'Xác nhận' })).toBeDisabled(); await user.type(screen.getByLabelText('Lý do *'), 'Clear reason'); expect(screen.getByRole('button', { name: 'Xác nhận' })).toBeEnabled(); expect(api).not.toHaveBeenCalled()
+  })
+
+  it('keeps workflow input and does not retry after a 409', async () => {
+    const user = userEvent.setup(); setSession('REVIEWER'); vi.mocked(getInspection).mockResolvedValue({ ...detail, status: 'UnderReview', reviewerUserId: 'u1' }); vi.mocked(rejectInspection).mockRejectedValue(new ApiError(409, { status: 409, code: 'inspection.concurrency_conflict' }))
+    renderDetail(); await user.click(await screen.findByRole('button', { name: 'Reject' })); await user.type(screen.getByLabelText('Lý do *'), 'Keep this reason'); await user.click(screen.getByRole('button', { name: 'Xác nhận' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nội dung bạn đang nhập vẫn được giữ'); expect(screen.getByLabelText('Lý do *')).toHaveValue('Keep this reason'); expect(rejectInspection).toHaveBeenCalledOnce()
+  })
+
+  it('creates revision 2 on first Recheck save, keeps it on later save and resubmits to the same Reviewer', async () => {
+    const user = userEvent.setup(); setSession('INSPECTOR'); vi.mocked(getInspection).mockResolvedValue({ ...detail, status: 'Recheck', reviewerUserId: 'reviewer-1', currentRevision: { ...detail.currentRevision, submittedAt: '2026-10-18T02:00:00Z' } })
+    vi.mocked(getInspectionReviewerOptions).mockResolvedValue({ ...emptyPage, items: [{ userId: 'reviewer-1', displayName: 'Demo Reviewer' }], totalCount: 1, totalPages: 1 })
+    vi.mocked(saveInspectionDraft).mockResolvedValueOnce({ id: 'i1', revisionNumber: 2, dataJson: '{"summary":"first change"}', updatedAt: '2026-10-18T03:00:00Z', inspectionRowVersion: 'i2', submissionRowVersion: 's2', processRowVersion: 'p2' }).mockResolvedValueOnce({ id: 'i1', revisionNumber: 2, dataJson: '{"summary":"second change"}', updatedAt: '2026-10-18T04:00:00Z', inspectionRowVersion: 'i3', submissionRowVersion: 's3', processRowVersion: 'p3' })
+    vi.mocked(submitInspection).mockResolvedValue({ inspectionId: 'i1', status: 'Submitted', reviewerUserId: 'reviewer-1', currentRevisionNumber: 2, completedAt: null, inspectionRowVersion: 'i4', submissionRowVersion: 's4', processRowVersion: 'p4' })
+    renderDetail(); const summary = await screen.findByLabelText(/Summary/); await user.clear(summary); await user.type(summary, 'first change'); await user.click(screen.getByRole('button', { name: 'Lưu' })); expect(await screen.findByText(/Đã tạo và lưu revision 2/)).toBeInTheDocument()
+    await user.clear(summary); await user.type(summary, 'second change'); await user.click(screen.getByRole('button', { name: 'Lưu' })); expect(saveInspectionDraft).toHaveBeenLastCalledWith('i1', expect.objectContaining({ inspectionRowVersion: 'i2', submissionRowVersion: 's2', processRowVersion: 'p2' }))
+    await user.click(screen.getByRole('button', { name: 'Gửi lại' })); expect(await screen.findByText(/Demo Reviewer/)).toBeInTheDocument(); await user.click(screen.getByRole('button', { name: 'Xác nhận' })); expect(submitInspection).toHaveBeenCalledWith('i1', 'reviewer-1', 'i3', 's3', 'p3')
+  })
+
+  it('escapes history and renders historical revisions read-only', async () => {
+    const user = userEvent.setup(); setSession('MANAGER'); vi.mocked(getInspection).mockResolvedValue({ ...detail, status: 'Approved' })
+    vi.mocked(getInspectionHistory).mockResolvedValue({ ...emptyPage, items: [{ id: 'h1', action: 'Approve', fromStatus: 'UnderReview', toStatus: 'Approved', actorUserId: 'u2', actorDisplayName: '<img src=x onerror=alert(1)>', reason: '<script>alert(1)</script>', createdAt: '2026-10-18T03:00:00Z', submissionId: 's1' }], totalCount: 1, totalPages: 1 })
+    vi.mocked(getInspectionRevisions).mockResolvedValue({ ...emptyPage, items: [{ id: 's1', revisionNumber: 1, createdByUserId: 'u1', createdByDisplayName: 'Inspector', createdAt: '2026-10-18T01:00:00Z', updatedAt: null, submittedAt: '2026-10-18T02:00:00Z', isImmutable: true, isCurrent: true, rowVersion: 's1' }], totalCount: 1, totalPages: 1 })
+    vi.mocked(getInspectionRevision).mockResolvedValue({ inspectionId: 'i1', id: 's1', revisionNumber: 1, dataJson: '{"summary":"historical"}', createdByUserId: 'u1', createdByDisplayName: 'Inspector', createdAt: '2026-10-18T01:00:00Z', updatedAt: null, submittedAt: '2026-10-18T02:00:00Z', isImmutable: true, isCurrent: true, rowVersion: 's1', template: detail.template })
+    renderDetail(); expect(await screen.findByText('<script>alert(1)</script>')).toBeInTheDocument(); expect(document.querySelector('script')).toBeNull(); await user.click(screen.getByRole('button', { name: /Revision 1/ })); expect(await screen.findByDisplayValue('historical')).toBeDisabled(); expect(getInspectionRevision).toHaveBeenCalledWith('i1', 1, expect.any(AbortSignal))
   })
 })
 
