@@ -19,6 +19,46 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
 {
     private const string ExpectedDatabaseName = "ConstructionInspectionIntegrationTestDb";
     private static readonly SemaphoreSlim DatabaseResetLock = new(1, 1);
+    private static bool databaseInitialized;
+
+    private const string ClearDatabaseSql = """
+        DELETE FROM [ProcessHistories];
+        DELETE FROM [BusinessProcesses];
+        UPDATE [Inspections] SET [CurrentSubmissionId] = NULL;
+        DELETE FROM [InspectionSubmissions];
+        DELETE FROM [Inspections];
+        DELETE FROM [DrawingObjectMappings];
+        DELETE FROM [DrawingDocuments];
+        DELETE FROM [FormTemplateVersions];
+        DELETE FROM [FormTemplates];
+        UPDATE [ConstructionObjects] SET [ParentId] = NULL;
+        DELETE FROM [ConstructionObjects];
+        DELETE FROM [AspNetUserTokens];
+        DELETE FROM [AspNetUserLogins];
+        DELETE FROM [AspNetUserClaims];
+        DELETE FROM [AspNetRoleClaims];
+        DELETE FROM [AspNetUserRoles];
+        DELETE FROM [AspNetUsers]
+        WHERE [NormalizedEmail] NOT IN (
+            N'ADMINISTRATOR@LOCAL.TEST', N'MANAGER@LOCAL.TEST',
+            N'INSPECTOR@LOCAL.TEST', N'REVIEWER@LOCAL.TEST');
+        UPDATE [AspNetUsers]
+        SET [IsActive] = 1, [AccessFailedCount] = 0, [LockoutEnd] = NULL
+        WHERE [NormalizedEmail] IN (
+            N'ADMINISTRATOR@LOCAL.TEST', N'MANAGER@LOCAL.TEST',
+            N'INSPECTOR@LOCAL.TEST', N'REVIEWER@LOCAL.TEST');
+        INSERT INTO [AspNetUserRoles] ([UserId], [RoleId])
+        SELECT u.[Id], r.[Id]
+        FROM (VALUES
+            (N'ADMINISTRATOR@LOCAL.TEST', N'ADMINISTRATOR'),
+            (N'MANAGER@LOCAL.TEST', N'MANAGER'),
+            (N'INSPECTOR@LOCAL.TEST', N'INSPECTOR'),
+            (N'REVIEWER@LOCAL.TEST', N'REVIEWER')
+        ) expected([NormalizedEmail], [NormalizedRole])
+        JOIN [AspNetUsers] u ON u.[NormalizedEmail] = expected.[NormalizedEmail]
+        JOIN [AspNetRoles] r ON r.[NormalizedName] = expected.[NormalizedRole];
+        ALTER SEQUENCE [InspectionNumberSequence] RESTART WITH 1;
+        """;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -67,18 +107,39 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         await DatabaseResetLock.WaitAsync();
         try
         {
-            await using var scope = Services.CreateAsyncScope();
-            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            EnsureSafeDatabase(context.Database.GetConnectionString());
-            await context.Database.EnsureDeletedAsync();
-            await context.Database.MigrateAsync();
-            await scope.ServiceProvider.GetRequiredService<DevelopmentIdentitySeeder>().SeedAsync();
-            scope.ServiceProvider.GetRequiredService<FakeObjectStorage>().Reset();
+            if (!databaseInitialized)
+            {
+                await InitializeDatabaseAsync();
+                await using var seedScope = Services.CreateAsyncScope();
+                await seedScope.ServiceProvider.GetRequiredService<DevelopmentIdentitySeeder>().SeedAsync();
+                databaseInitialized = true;
+            }
+            else
+            {
+                await using var clearScope = Services.CreateAsyncScope();
+                var clearContext = clearScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                EnsureSafeDatabase(clearContext.Database.GetConnectionString());
+                await clearContext.Database.ExecuteSqlRawAsync(ClearDatabaseSql);
+                clearContext.ChangeTracker.Clear();
+            }
+
+            Services.GetRequiredService<FakeObjectStorage>().Reset();
         }
         finally
         {
             DatabaseResetLock.Release();
         }
+    }
+
+    private async Task InitializeDatabaseAsync()
+    {
+        SqlConnection.ClearAllPools();
+        await using var migrationScope = Services.CreateAsyncScope();
+        var migrationContext = migrationScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        EnsureSafeDatabase(migrationContext.Database.GetConnectionString());
+        await migrationContext.Database.MigrateAsync();
+        await migrationContext.Database.ExecuteSqlRawAsync(ClearDatabaseSql);
+        migrationContext.ChangeTracker.Clear();
     }
 
     public sealed class FakeObjectStorage : IObjectStorage

@@ -21,7 +21,7 @@ public sealed class FormTemplateEndpointsTests(ConstructionObjectApiFactory fact
 
     public Task InitializeAsync() => factory.ResetDatabaseAsync();
 
-    public Task DisposeAsync() => factory.ResetDatabaseAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Endpoints_EnforceAdministratorRoleForAllManagementOperations()
