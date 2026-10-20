@@ -1,4 +1,4 @@
-import type { CreateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft, ReviewerOption, InspectionWorkflowResult, ProcessHistory, InspectionRevisionListItem, InspectionRevisionDetail } from './types'
+import type { CreateConstructionObjectInput, ConstructionObjectDetail, ConstructionObjectInput, ConstructionObjectType, DeactivatedConstructionObject, UpdateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft, ReviewerOption, InspectionWorkflowResult, ProcessHistory, InspectionRevisionListItem, InspectionRevisionDetail } from './types'
 
 export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5277').replace(/\/$/, '')
 let getToken: () => string | null = () => null
@@ -31,6 +31,21 @@ export const getDrawingMappings = (drawingId: string, pageNumber: number, signal
   request<DrawingPageMappings>(`/api/drawings/${encodeURIComponent(drawingId)}/mappings?pageNumber=${pageNumber}`, { signal })
 export const getConstructionObjects = (search = '', signal?: AbortSignal) =>
   request<PagedResult<ConstructionObjectListItem>>(`/api/construction-objects?pageNumber=1&pageSize=100&isActive=true&sortBy=name&sortDirection=asc${search ? `&search=${encodeURIComponent(search)}` : ''}`, { signal })
+export type ConstructionObjectListParameters = {
+  pageNumber: number; pageSize: number; search?: string; objectType?: ConstructionObjectType | ''
+  isActive?: 'true' | 'false' | ''; sortBy?: 'code' | 'name' | 'objectType' | 'createdAt' | 'updatedAt'
+  sortDirection?: 'asc' | 'desc'
+}
+export const getConstructionObjectPage = (parameters: ConstructionObjectListParameters, signal?: AbortSignal) =>
+  request<PagedResult<ConstructionObjectListItem>>(`/api/construction-objects?${queryString(parameters)}`, { signal })
+export const getConstructionObject = (id: string, signal?: AbortSignal) =>
+  request<ConstructionObjectDetail>(`/api/construction-objects/${encodeURIComponent(id)}`, { signal })
+export const createConstructionObject = (input: ConstructionObjectInput) =>
+  request<ConstructionObjectDetail>('/api/construction-objects', { method: 'POST', body: JSON.stringify(input) })
+export const updateConstructionObject = (id: string, input: UpdateConstructionObjectInput) =>
+  request<ConstructionObjectDetail>(`/api/construction-objects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) })
+export const deactivateConstructionObject = (id: string, rowVersion: string) =>
+  request<DeactivatedConstructionObject>(`/api/construction-objects/${encodeURIComponent(id)}/deactivate`, { method: 'POST', body: JSON.stringify({ rowVersion }) })
 export const createDrawingMapping = (drawingId: string, pageNumber: number, constructionObjectId: string, geometry: DrawingRectangle) =>
   request<DrawingObjectMapping>(`/api/drawings/${encodeURIComponent(drawingId)}/mappings`, { method: 'POST', body: JSON.stringify({ pageNumber, constructionObjectId, shapeType: 'Rectangle', geometry }) })
 export const updateDrawingMapping = (mappingId: string, constructionObjectId: string, geometry: DrawingRectangle, rowVersion: string) =>

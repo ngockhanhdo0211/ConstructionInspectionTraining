@@ -13,6 +13,10 @@ import { FormTemplateDetailPage } from './pages/FormTemplateDetailPage'
 import { InspectionsPage } from './pages/InspectionsPage'
 import { NewInspectionPage } from './pages/NewInspectionPage'
 import { InspectionDetailPage } from './pages/InspectionDetailPage'
+import { ConstructionObjectManagementRoute } from './components/ConstructionObjectManagementRoute'
+import { ConstructionObjectsPage } from './pages/ConstructionObjectsPage'
+import { NewConstructionObjectPage } from './pages/NewConstructionObjectPage'
+import { ConstructionObjectDetailPage } from './pages/ConstructionObjectDetailPage'
 
 const DrawingViewerPage = lazy(() => import('./pages/DrawingViewerPage').then(module => ({ default: module.DrawingViewerPage })))
 
@@ -26,6 +30,11 @@ export default function App() {
       <Route path="/inspections" element={<InspectionsPage />} />
       <Route path="/inspections/new" element={<NewInspectionPage />} />
       <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+      <Route element={<ConstructionObjectManagementRoute />}>
+        <Route path="/construction-objects" element={<ConstructionObjectsPage />} />
+        <Route path="/construction-objects/new" element={<NewConstructionObjectPage />} />
+        <Route path="/construction-objects/:id" element={<ConstructionObjectDetailPage />} />
+      </Route>
       <Route element={<FormTemplateAdminRoute />}>
         <Route path="/form-templates" element={<FormTemplatesPage />} />
         <Route path="/form-templates/new" element={<NewFormTemplatePage />} />

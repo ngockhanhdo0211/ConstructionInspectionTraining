@@ -6,6 +6,22 @@ export type UploadResponse = { drawing: Drawing; duplicateWarning: boolean }
 export type Problem = { title?: string; detail?: string; status?: number; code?: string; traceId?: string; errors?: Record<string, string[]> }
 export type ConstructionObjectType = 'Project' | 'Building' | 'Floor' | 'Room' | 'WorkItem'
 export type ConstructionObjectListItem = { id: string; parentId: string | null; code: string; name: string; objectType: ConstructionObjectType; location?: string | null; isActive: boolean; rowVersion: string }
+export type ConstructionObjectBreadcrumbItem = { id: string; code: string; name: string; objectType: ConstructionObjectType }
+export type ConstructionObjectDetail = {
+  id: string; parentId: string | null; code: string; name: string; objectType: ConstructionObjectType
+  location?: string | null; description?: string | null; isActive: boolean
+  parent?: ConstructionObjectBreadcrumbItem | null; breadcrumb: ConstructionObjectBreadcrumbItem[]
+  hasChildren: boolean; directChildrenCount: number; createdByUserId: string; createdAt: string
+  updatedByUserId?: string | null; updatedAt?: string | null; rowVersion: string
+}
+export type ConstructionObjectInput = {
+  parentId: string | null; code: string; name: string; objectType: ConstructionObjectType
+  location?: string | null; description?: string | null
+}
+export type UpdateConstructionObjectInput = ConstructionObjectInput & { rowVersion: string }
+export type DeactivatedConstructionObject = {
+  id: string; isActive: false; updatedByUserId: string; updatedAt: string; rowVersion: string
+}
 export type DrawingRectangle = { left: number; bottom: number; right: number; top: number }
 export type MappingConstructionObject = { id: string; code: string; name: string; objectType: ConstructionObjectType; isActive: boolean }
 export type DrawingObjectMapping = {
@@ -15,10 +31,7 @@ export type DrawingObjectMapping = {
   deactivatedAt?: string | null; deactivatedByUserId?: string | null; rowVersion: string
 }
 export type DrawingPageMappings = { drawingId: string; pageNumber: number; items: DrawingObjectMapping[] }
-export type CreateConstructionObjectInput = {
-  parentId: string | null; code: string; name: string; objectType: ConstructionObjectType
-  location?: string | null; description?: string | null
-}
+export type CreateConstructionObjectInput = ConstructionObjectInput
 
 export type FormTemplateStatus = 'Active' | 'Inactive'
 export type FormTemplateVersionStatus = 'Draft' | 'Published'
