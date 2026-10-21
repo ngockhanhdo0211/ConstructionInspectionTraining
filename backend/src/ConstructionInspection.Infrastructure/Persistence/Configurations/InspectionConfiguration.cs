@@ -1,4 +1,5 @@
 using ConstructionInspection.Domain.ConstructionObjects;
+using ConstructionInspection.Domain.Checklists;
 using ConstructionInspection.Domain.FormTemplates;
 using ConstructionInspection.Domain.Inspections;
 using ConstructionInspection.Infrastructure.Identity;
@@ -65,10 +66,11 @@ public sealed class BusinessProcessConfiguration : IEntityTypeConfiguration<Busi
     {
         builder.ToTable("BusinessProcesses", table =>
         {
-            table.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] = 'Inspection'");
+            table.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] IN ('Inspection','Checklist')");
             table.HasCheckConstraint(
                 "CK_BusinessProcesses_Status",
-                "[Status] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
+                "[Status] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected') AND NOT ([EntityType] = 'Inspection' AND [Status] = 'InProgress')");
+            table.HasCheckConstraint("CK_BusinessProcesses_Owner", "([EntityType] = 'Inspection' AND [InspectionId] IS NOT NULL AND [ChecklistId] IS NULL) OR ([EntityType] = 'Checklist' AND [ChecklistId] IS NOT NULL AND [InspectionId] IS NULL)");
         });
         builder.HasKey(x => x.Id);
         builder.Property(x => x.EntityType).HasConversion<string>().HasMaxLength(20).IsUnicode(false).IsRequired();
@@ -78,10 +80,12 @@ public sealed class BusinessProcessConfiguration : IEntityTypeConfiguration<Busi
         builder.Property(x => x.DueAt).HasPrecision(7);
         builder.Property(x => x.CompletedAt).HasPrecision(7);
         builder.Property(x => x.RowVersion).IsRowVersion();
-        builder.HasIndex(x => x.InspectionId).IsUnique().HasDatabaseName("UX_BusinessProcesses_InspectionId");
+        builder.HasIndex(x => x.InspectionId).IsUnique().HasFilter("[InspectionId] IS NOT NULL").HasDatabaseName("UX_BusinessProcesses_InspectionId");
+        builder.HasIndex(x => x.ChecklistId).IsUnique().HasFilter("[ChecklistId] IS NOT NULL").HasDatabaseName("UX_BusinessProcesses_ChecklistId");
         builder.HasIndex(x => new { x.EntityType, x.Status, x.UpdatedAt }).IsDescending(false, false, true)
             .HasDatabaseName("IX_BusinessProcesses_EntityType_Status_UpdatedAt");
         builder.HasOne<Inspection>().WithOne().HasForeignKey<BusinessProcess>(x => x.InspectionId).OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<Checklist>().WithOne().HasForeignKey<BusinessProcess>(x => x.ChecklistId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.AssignedToUserId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
     }
@@ -95,10 +99,11 @@ public sealed class ProcessHistoryConfiguration : IEntityTypeConfiguration<Proce
         {
             table.HasCheckConstraint(
                 "CK_ProcessHistories_ToStatus",
-                "[ToStatus] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
+                "[ToStatus] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected')");
             table.HasCheckConstraint(
                 "CK_ProcessHistories_Action",
-                "[Action] IN ('Create','Submit','StartReview','Approve','Reject','RequestRecheck','ReassignReviewer','CreateRevision')");
+                "[Action] IN ('Create','Start','UpdateInspectionLinks','Submit','StartReview','Approve','Reject','RequestRecheck','Resume','ReassignReviewer','CreateRevision')");
+            table.HasCheckConstraint("CK_ProcessHistories_SubmissionOwner", "[SubmissionId] IS NULL OR [ChecklistSubmissionId] IS NULL");
         });
         builder.HasKey(x => x.Id);
         builder.Property(x => x.FromStatus).HasConversion<string>().HasMaxLength(30).IsUnicode(false);
@@ -113,5 +118,6 @@ public sealed class ProcessHistoryConfiguration : IEntityTypeConfiguration<Proce
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.PreviousAssignedToUserId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.NewAssignedToUserId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<InspectionSubmission>().WithMany().HasForeignKey(x => x.SubmissionId).OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<ChecklistSubmission>().WithMany().HasForeignKey(x => x.ChecklistSubmissionId).OnDelete(DeleteBehavior.NoAction);
     }
 }

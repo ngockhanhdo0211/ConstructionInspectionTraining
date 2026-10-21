@@ -99,7 +99,7 @@ public sealed class SaveInspectionDraftCommandHandler(
             var validated = dataValidator.ValidateDraft(version.SchemaJson, request.DataJson);
             var now = clock.UtcNow;
             var currentSubmission = aggregate.Submission;
-            if (aggregate.Process.Status == InspectionStatus.Recheck && currentSubmission.SubmittedAt.HasValue)
+            if (aggregate.Process.Status == ProcessStatus.Recheck && currentSubmission.SubmittedAt.HasValue)
             {
                 var newSubmissionId = Guid.NewGuid();
                 var revisionNumber = aggregate.Inspection.AllocateRevision(newSubmissionId, actorId, now);
@@ -114,7 +114,7 @@ public sealed class SaveInspectionDraftCommandHandler(
                 repository.AddSubmission(currentSubmission);
                 repository.AddHistory(ProcessHistory.Create(
                     Guid.NewGuid(), aggregate.Process.Id,
-                    InspectionStatus.Recheck, InspectionStatus.Recheck,
+                    ProcessStatus.Recheck, ProcessStatus.Recheck,
                     "CreateRevision", actorId, now, currentSubmission.Id));
             }
             else

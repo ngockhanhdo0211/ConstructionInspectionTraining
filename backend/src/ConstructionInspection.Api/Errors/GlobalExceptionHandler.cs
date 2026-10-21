@@ -1,5 +1,6 @@
 using ConstructionInspection.Application.Common.Exceptions;
 using ConstructionInspection.Domain.ConstructionObjects;
+using ConstructionInspection.Domain.Checklists;
 using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
@@ -29,6 +30,8 @@ public sealed class GlobalExceptionHandler(
                 StatusCodes.Status400BadRequest,
                 badRequest.Code.StartsWith("inspection.", StringComparison.Ordinal)
                     ? "Inspection validation failed"
+                    : badRequest.Code.StartsWith("checklist.", StringComparison.Ordinal)
+                        ? "Checklist validation failed"
                     : "Form Template validation failed",
                 badRequest.Message,
                 badRequest.Code),
@@ -39,6 +42,12 @@ public sealed class GlobalExceptionHandler(
                     : "Upload too large",
                 payload.Message,
                 payload.Code),
+            BadHttpRequestException badRequest when badRequest.StatusCode == StatusCodes.Status413PayloadTooLarge
+                => CreateProblem(
+                    StatusCodes.Status413PayloadTooLarge,
+                    "Request too large",
+                    "The request body exceeds the allowed size.",
+                    "request.payload_too_large"),
             UnsupportedMediaTypeException => CreateProblem(415, "Unsupported PDF", exception.Message, "drawing.unsupported_media_type"),
             AuthenticationFailedException => new ProblemDetails
             {
@@ -92,6 +101,16 @@ public sealed class GlobalExceptionHandler(
                 "Inspection conflict",
                 inspection.Message,
                 inspection.Code),
+            ChecklistDomainException checklist when checklist.Code is
+                "checklist.invalid_identity" or "checklist.invalid_number" or
+                "checklist.title_invalid" or "checklist.description_invalid" or
+                "checklist.item_count_invalid" or "checklist.item_criterion_invalid" or
+                "checklist.item_criterion_duplicate" or "checklist.item_note_invalid" or
+                "checklist.item_note_required" or "checklist.item_result_invalid" or
+                "checklist.item_sequence_invalid" or "checklist.item_not_checked"
+                => CreateProblem(400, "Checklist validation failed", checklist.Message, checklist.Code),
+            ChecklistDomainException checklist => CreateProblem(
+                StatusCodes.Status409Conflict, "Checklist conflict", checklist.Message, checklist.Code),
             RangeNotSatisfiableException range => CreateRangeProblem(httpContext, range),
             ObjectStorageException storage => CreateProblem(
                 StatusCodes.Status502BadGateway,

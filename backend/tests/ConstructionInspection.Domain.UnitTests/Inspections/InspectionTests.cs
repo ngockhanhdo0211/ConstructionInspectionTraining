@@ -52,10 +52,10 @@ public sealed class InspectionTests
         var process = BusinessProcess.CreateDraft(Guid.NewGuid(), inspection.Id, Actor, Now);
         var history = ProcessHistory.CreateInitial(Guid.NewGuid(), process.Id, submission.Id, Actor, Now);
 
-        Assert.Equal(InspectionStatus.Draft, process.Status);
+        Assert.Equal(ProcessStatus.Draft, process.Status);
         Assert.Null(process.AssignedToUserId);
         Assert.Null(history.FromStatus);
-        Assert.Equal(InspectionStatus.Draft, history.ToStatus);
+        Assert.Equal(ProcessStatus.Draft, history.ToStatus);
         Assert.Equal("Create", history.Action);
         Assert.Equal(Actor, history.PerformedByUserId);
         Assert.Equal(Now, history.PerformedAt);
@@ -74,7 +74,7 @@ public sealed class InspectionTests
     {
         var process = BusinessProcess.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), Actor, Now);
         typeof(BusinessProcess).GetProperty(nameof(BusinessProcess.Status))!
-            .SetValue(process, InspectionStatus.Submitted);
+            .SetValue(process, ProcessStatus.Submitted);
 
         var error = Assert.Throws<InspectionDomainException>(process.EnsureDraft);
         Assert.Equal("inspection.invalid_state", error.Code);
@@ -85,10 +85,10 @@ public sealed class InspectionTests
     {
         var process = BusinessProcess.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), Actor, Now);
 
-        Assert.Equal(InspectionStatus.Draft, process.Submit(Reviewer, Now));
-        Assert.Equal(InspectionStatus.Submitted, process.StartReview(Reviewer, Now.AddMinutes(1)));
-        Assert.Equal(InspectionStatus.UnderReview, process.Approve(Reviewer, Now.AddMinutes(2)));
-        Assert.Equal(InspectionStatus.Approved, process.Status);
+        Assert.Equal(ProcessStatus.Draft, process.Submit(Reviewer, Now));
+        Assert.Equal(ProcessStatus.Submitted, process.StartReview(Reviewer, Now.AddMinutes(1)));
+        Assert.Equal(ProcessStatus.UnderReview, process.Approve(Reviewer, Now.AddMinutes(2)));
+        Assert.Equal(ProcessStatus.Approved, process.Status);
         Assert.NotNull(process.CompletedAt);
 
         var error = Assert.Throws<InspectionDomainException>(() =>
@@ -105,7 +105,7 @@ public sealed class InspectionTests
         Assert.Equal("inspection.reason_required", Assert.Throws<InspectionDomainException>(() =>
             rejected.Reject(Reviewer, " ", Now)).Code);
         rejected.Reject(Reviewer, "Not compliant", Now);
-        Assert.Equal(InspectionStatus.Rejected, rejected.Status);
+        Assert.Equal(ProcessStatus.Rejected, rejected.Status);
         Assert.Equal("inspection.invalid_state", Assert.Throws<InspectionDomainException>(() =>
             rejected.RequestRecheck(Reviewer, "Try again", Now)).Code);
 
@@ -113,8 +113,8 @@ public sealed class InspectionTests
         recheck.Submit(Reviewer, Now);
         recheck.StartReview(Reviewer, Now);
         recheck.RequestRecheck(Reviewer, "Correct values", Now);
-        Assert.Equal(InspectionStatus.Recheck, recheck.Status);
-        Assert.Equal(InspectionStatus.Recheck, recheck.Submit(Reviewer, Now));
+        Assert.Equal(ProcessStatus.Recheck, recheck.Status);
+        Assert.Equal(ProcessStatus.Recheck, recheck.Submit(Reviewer, Now));
     }
 
     [Fact]
@@ -124,15 +124,15 @@ public sealed class InspectionTests
         var submitted = BusinessProcess.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), Actor, Now);
         submitted.Submit(Reviewer, Now);
         var first = submitted.ReassignReviewer(replacement, "Coverage", Now);
-        Assert.Equal(InspectionStatus.Submitted, first.FromStatus);
-        Assert.Equal(InspectionStatus.Submitted, submitted.Status);
+        Assert.Equal(ProcessStatus.Submitted, first.FromStatus);
+        Assert.Equal(ProcessStatus.Submitted, submitted.Status);
 
         var underReview = BusinessProcess.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), Actor, Now);
         underReview.Submit(Reviewer, Now);
         underReview.StartReview(Reviewer, Now);
         var second = underReview.ReassignReviewer(replacement, "Coverage", Now);
-        Assert.Equal(InspectionStatus.UnderReview, second.FromStatus);
-        Assert.Equal(InspectionStatus.Submitted, underReview.Status);
+        Assert.Equal(ProcessStatus.UnderReview, second.FromStatus);
+        Assert.Equal(ProcessStatus.Submitted, underReview.Status);
         Assert.Equal(replacement, underReview.AssignedToUserId);
     }
 

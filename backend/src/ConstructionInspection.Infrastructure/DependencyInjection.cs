@@ -4,6 +4,7 @@ using ConstructionInspection.Application.Drawings.Interfaces;
 using ConstructionInspection.Application.DrawingMappings.Interfaces;
 using ConstructionInspection.Application.FormTemplates.Interfaces;
 using ConstructionInspection.Application.Inspections.Interfaces;
+using ConstructionInspection.Application.Checklists.Interfaces;
 using ConstructionInspection.Infrastructure.Authentication;
 using ConstructionInspection.Infrastructure.Identity;
 using ConstructionInspection.Infrastructure.Persistence;
@@ -74,6 +75,9 @@ public static class DependencyInjection
         services.AddScoped<IInspectionReadService, InspectionReadService>();
         services.AddScoped<IInspectionReviewerService, InspectionReviewerService>();
         services.AddScoped<IInspectionNumberSequence, InspectionNumberSequence>();
+        services.AddScoped<IChecklistRepository, ChecklistRepository>();
+        services.AddScoped<IChecklistReadService, ChecklistReadService>();
+        services.AddScoped<IChecklistNumberSequence, ChecklistNumberSequence>();
         services.AddSingleton<IUploadStagingStore, TemporaryFileStagingStore>();
         services.AddSingleton<IPdfMetadataReader, PdfSharpMetadataReader>();
         services.AddOptions<ObjectStorageOptions>()

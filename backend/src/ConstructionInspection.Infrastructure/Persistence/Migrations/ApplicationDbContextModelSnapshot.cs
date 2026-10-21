@@ -22,7 +22,273 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.HasSequence("ChecklistNumberSequence");
+
             modelBuilder.HasSequence("InspectionNumberSequence");
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.Checklist", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConstructionObjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("NextSubmissionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid?>("ReviewerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentSubmissionId");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Checklists_Number");
+
+                    b.HasIndex("ConstructionObjectId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.HasIndex("CreatedByUserId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.HasIndex("ReviewerUserId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.ToTable("Checklists", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Checklists_NextSubmissionNumber", "[NextSubmissionNumber] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistInspection", b =>
+                {
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("InspectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("LinkedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("ChecklistId", "InspectionId");
+
+                    b.HasIndex("InspectionId");
+
+                    b.HasIndex("LinkedByUserId");
+
+                    b.ToTable("ChecklistInspections", (string)null);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Criterion")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("ChecklistId", "Sequence")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ChecklistItems_ChecklistId_Sequence");
+
+                    b.ToTable("ChecklistItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ChecklistItems_Result", "[Result] IN ('NotChecked','Pass','Fail','NotApplicable')");
+
+                            t.HasCheckConstraint("CK_ChecklistItems_Sequence", "[Sequence] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SubmissionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("SubmittedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubmittedByUserId");
+
+                    b.HasIndex("ChecklistId", "SubmissionNumber")
+                        .IsUnique()
+                        .IsDescending(false, true)
+                        .HasDatabaseName("UX_ChecklistSubmissions_ChecklistId_SubmissionNumber");
+
+                    b.ToTable("ChecklistSubmissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ChecklistSubmissions_Number", "[SubmissionNumber] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistSubmissionInspection", b =>
+                {
+                    b.Property<Guid>("ChecklistSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("InspectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("ChecklistSubmissionId", "InspectionId");
+
+                    b.HasIndex("InspectionId");
+
+                    b.ToTable("ChecklistSubmissionInspections", (string)null);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistSubmissionItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ChecklistSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Criterion")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SourceChecklistItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceChecklistItemId");
+
+                    b.HasIndex("ChecklistSubmissionId", "Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("ChecklistSubmissionId", "SourceChecklistItemId")
+                        .IsUnique();
+
+                    b.ToTable("ChecklistSubmissionItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ChecklistSubmissionItems_Result", "[Result] IN ('Pass','Fail','NotApplicable')");
+
+                            t.HasCheckConstraint("CK_ChecklistSubmissionItems_Sequence", "[Sequence] > 0");
+                        });
+                });
 
             modelBuilder.Entity("ConstructionInspection.Domain.ConstructionObjects.ConstructionObject", b =>
                 {
@@ -463,6 +729,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("AssignedToUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ChecklistId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasPrecision(7)
                         .HasColumnType("datetime2(7)");
@@ -484,7 +753,7 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .IsUnicode(false)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<Guid>("InspectionId")
+                    b.Property<Guid?>("InspectionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("RowVersion")
@@ -507,11 +776,17 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AssignedToUserId");
 
+                    b.HasIndex("ChecklistId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BusinessProcesses_ChecklistId")
+                        .HasFilter("[ChecklistId] IS NOT NULL");
+
                     b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("InspectionId")
                         .IsUnique()
-                        .HasDatabaseName("UX_BusinessProcesses_InspectionId");
+                        .HasDatabaseName("UX_BusinessProcesses_InspectionId")
+                        .HasFilter("[InspectionId] IS NOT NULL");
 
                     b.HasIndex("EntityType", "Status", "UpdatedAt")
                         .IsDescending(false, false, true)
@@ -519,9 +794,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.ToTable("BusinessProcesses", null, t =>
                         {
-                            t.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] = 'Inspection'");
+                            t.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] IN ('Inspection','Checklist')");
 
-                            t.HasCheckConstraint("CK_BusinessProcesses_Status", "[Status] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
+                            t.HasCheckConstraint("CK_BusinessProcesses_Owner", "([EntityType] = 'Inspection' AND [InspectionId] IS NOT NULL AND [ChecklistId] IS NULL) OR ([EntityType] = 'Checklist' AND [ChecklistId] IS NOT NULL AND [InspectionId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_BusinessProcesses_Status", "[Status] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected') AND NOT ([EntityType] = 'Inspection' AND [Status] = 'InProgress')");
                         });
                 });
 
@@ -675,6 +952,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("BusinessProcessId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ChecklistSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("FromStatus")
                         .HasMaxLength(30)
                         .IsUnicode(false)
@@ -708,6 +988,8 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ChecklistSubmissionId");
+
                     b.HasIndex("NewAssignedToUserId");
 
                     b.HasIndex("PerformedByUserId");
@@ -721,9 +1003,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ProcessHistories", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] IN ('Create','Submit','StartReview','Approve','Reject','RequestRecheck','ReassignReviewer','CreateRevision')");
+                            t.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] IN ('Create','Start','UpdateInspectionLinks','Submit','StartReview','Approve','Reject','RequestRecheck','Resume','ReassignReviewer','CreateRevision')");
 
-                            t.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')");
+                            t.HasCheckConstraint("CK_ProcessHistories_SubmissionOwner", "[SubmissionId] IS NULL OR [ChecklistSubmissionId] IS NULL");
+
+                            t.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected')");
                         });
                 });
 
@@ -974,6 +1258,117 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.Checklist", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.ConstructionObjects.ConstructionObject", null)
+                        .WithMany()
+                        .HasForeignKey("ConstructionObjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Checklists.ChecklistSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentSubmissionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistInspection", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.Checklists.Checklist", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Inspections.Inspection", null)
+                        .WithMany()
+                        .HasForeignKey("InspectionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("LinkedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistItem", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.Checklists.Checklist", null)
+                        .WithMany("Items")
+                        .HasForeignKey("ChecklistId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistSubmission", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.Checklists.Checklist", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistSubmissionInspection", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.Checklists.ChecklistSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistSubmissionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Inspections.Inspection", null)
+                        .WithMany()
+                        .HasForeignKey("InspectionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.ChecklistSubmissionItem", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.Checklists.ChecklistSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistSubmissionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Checklists.ChecklistItem", null)
+                        .WithMany()
+                        .HasForeignKey("SourceChecklistItemId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ConstructionInspection.Domain.ConstructionObjects.ConstructionObject", b =>
                 {
                     b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
@@ -1084,6 +1479,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasForeignKey("AssignedToUserId")
                         .OnDelete(DeleteBehavior.NoAction);
 
+                    b.HasOne("ConstructionInspection.Domain.Checklists.Checklist", null)
+                        .WithOne()
+                        .HasForeignKey("ConstructionInspection.Domain.Inspections.BusinessProcess", "ChecklistId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
@@ -1093,8 +1493,7 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                     b.HasOne("ConstructionInspection.Domain.Inspections.Inspection", null)
                         .WithOne()
                         .HasForeignKey("ConstructionInspection.Domain.Inspections.BusinessProcess", "InspectionId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("ConstructionInspection.Domain.Inspections.Inspection", b =>
@@ -1150,6 +1549,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasForeignKey("BusinessProcessId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Checklists.ChecklistSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistSubmissionId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
@@ -1222,6 +1626,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Checklists.Checklist", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

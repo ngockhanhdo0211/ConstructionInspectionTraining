@@ -24,6 +24,13 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
     private const string ClearDatabaseSql = """
         DELETE FROM [ProcessHistories];
         DELETE FROM [BusinessProcesses];
+        UPDATE [Checklists] SET [CurrentSubmissionId] = NULL;
+        DELETE FROM [ChecklistSubmissionInspections];
+        DELETE FROM [ChecklistSubmissionItems];
+        DELETE FROM [ChecklistInspections];
+        DELETE FROM [ChecklistSubmissions];
+        DELETE FROM [ChecklistItems];
+        DELETE FROM [Checklists];
         UPDATE [Inspections] SET [CurrentSubmissionId] = NULL;
         DELETE FROM [InspectionSubmissions];
         DELETE FROM [Inspections];
@@ -58,6 +65,7 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         JOIN [AspNetUsers] u ON u.[NormalizedEmail] = expected.[NormalizedEmail]
         JOIN [AspNetRoles] r ON r.[NormalizedName] = expected.[NormalizedRole];
         ALTER SEQUENCE [InspectionNumberSequence] RESTART WITH 1;
+        ALTER SEQUENCE [ChecklistNumberSequence] RESTART WITH 1;
         """;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

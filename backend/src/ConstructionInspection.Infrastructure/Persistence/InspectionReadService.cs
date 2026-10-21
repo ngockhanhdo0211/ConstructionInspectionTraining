@@ -15,7 +15,11 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
     {
         var query = Scoped(context.Inspections.AsNoTracking(), criteria.Scope);
         if (criteria.Status.HasValue)
-            query = query.Where(x => context.BusinessProcesses.Any(p => p.InspectionId == x.Id && p.Status == criteria.Status));
+        {
+            var processStatus = criteria.Status.Value.ToProcessStatus();
+            query = query.Where(x => context.BusinessProcesses.Any(p =>
+                p.EntityType == ProcessEntityType.Inspection && p.InspectionId == x.Id && p.Status == processStatus));
+        }
         if (criteria.ConstructionObjectId.HasValue)
             query = query.Where(x => x.ConstructionObjectId == criteria.ConstructionObjectId);
         if (criteria.ReviewerUserId.HasValue)
@@ -37,7 +41,7 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
                 x.ConstructionObjectId,
                 x.FormTemplateVersionId,
                 VersionNumber = context.FormTemplateVersions.Where(v => v.Id == x.FormTemplateVersionId).Select(v => v.VersionNumber).Single(),
-                Status = context.BusinessProcesses.Where(p => p.InspectionId == x.Id).Select(p => p.Status).Single(),
+                Status = context.BusinessProcesses.Where(p => p.EntityType == ProcessEntityType.Inspection && p.InspectionId == x.Id).Select(p => p.Status).Single(),
                 x.CreatedByUserId,
                 x.ReviewerUserId,
                 x.CreatedAt,
@@ -46,7 +50,7 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
             }).ToArrayAsync(cancellationToken);
         var items = rows.Select(x => new InspectionListItemDto(
             x.Id, x.Number, x.Title, x.ConstructionObjectId, x.FormTemplateVersionId,
-            x.VersionNumber, x.Status, x.CreatedByUserId, x.ReviewerUserId,
+            x.VersionNumber, x.Status.ToInspectionStatus(), x.CreatedByUserId, x.ReviewerUserId,
             x.CreatedAt, x.UpdatedAt, Convert.ToBase64String(x.RowVersion))).ToArray();
         return new(items, criteria.PageNumber, criteria.PageSize, total,
             total == 0 ? 0 : (int)Math.Ceiling(total / (double)criteria.PageSize));
@@ -62,7 +66,7 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
             join version in context.FormTemplateVersions.AsNoTracking() on inspection.FormTemplateVersionId equals version.Id
             join template in context.FormTemplates.AsNoTracking() on version.FormTemplateId equals template.Id
             join submission in context.InspectionSubmissions.AsNoTracking() on inspection.CurrentSubmissionId equals submission.Id
-            join process in context.BusinessProcesses.AsNoTracking() on inspection.Id equals process.InspectionId
+            join process in context.BusinessProcesses.AsNoTracking().Where(x => x.EntityType == ProcessEntityType.Inspection) on inspection.Id equals process.InspectionId
             where submission.InspectionId == inspection.Id
             select new
             {
@@ -83,7 +87,7 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
             row.Inspection.Id, row.Inspection.Number, row.Inspection.ConstructionObjectId,
             row.ObjectCode, row.ObjectName, row.Inspection.Title, row.Inspection.Description,
             new(row.TemplateId, row.Code, row.Name, row.VersionId, row.VersionNumber, row.SchemaJson),
-            row.Process.Status, row.Inspection.CreatedByUserId, row.Inspection.ReviewerUserId,
+            row.Process.Status.ToInspectionStatus(), row.Inspection.CreatedByUserId, row.Inspection.ReviewerUserId,
             row.Inspection.CreatedAt, row.Inspection.UpdatedAt,
             new(row.Submission.Id, row.Submission.RevisionNumber, row.Submission.DataJson,
                 row.Submission.CreatedAt, row.Submission.UpdatedAt, row.Submission.SubmittedAt,
@@ -157,7 +161,9 @@ public sealed class InspectionReadService(ApplicationDbContext context) : IInspe
             })
             .ToArrayAsync(cancellationToken);
         var items = rows.Select(x => new ProcessHistoryDto(
-            x.History.Id, x.History.Action, x.History.FromStatus, x.History.ToStatus,
+            x.History.Id, x.History.Action,
+            x.History.FromStatus?.ToInspectionStatus(),
+            x.History.ToStatus.ToInspectionStatus(),
             x.History.PerformedByUserId, x.ActorName,
             x.History.PreviousAssignedToUserId, x.PreviousName,
             x.History.NewAssignedToUserId, x.NewName,

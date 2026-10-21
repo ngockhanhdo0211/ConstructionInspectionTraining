@@ -6,6 +6,7 @@ using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
 using ConstructionInspection.Domain.Inspections;
+using ConstructionInspection.Domain.Checklists;
 
 namespace ConstructionInspection.Infrastructure.Persistence;
 
@@ -19,6 +20,10 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
         }
         catch (DbUpdateConcurrencyException exception)
         {
+            if (exception.Entries.Any(entry => entry.Entity is Checklist or ChecklistItem))
+            {
+                throw new ConflictException("checklist.concurrency_conflict", "The Checklist was changed by another request.");
+            }
             if (exception.Entries.Any(entry => entry.Entity is Inspection or InspectionSubmission or BusinessProcess))
             {
                 throw new ConflictException(
@@ -55,6 +60,12 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
             when (exception.InnerException is SqlException { Number: 2601 or 2627 })
         {
             var sqlMessage = exception.InnerException.Message;
+            if (sqlMessage.Contains("UX_Checklists_Number", StringComparison.OrdinalIgnoreCase))
+                throw new ConflictException("checklist.number_conflict", "The generated Checklist Number conflicts with an existing record.");
+            if (sqlMessage.Contains("UX_BusinessProcesses_ChecklistId", StringComparison.OrdinalIgnoreCase)
+                || sqlMessage.Contains("UX_ChecklistSubmissions_ChecklistId_SubmissionNumber", StringComparison.OrdinalIgnoreCase)
+                || sqlMessage.Contains("UX_ChecklistItems_ChecklistId_Sequence", StringComparison.OrdinalIgnoreCase))
+                throw new ConflictException("checklist.concurrency_conflict", "The Checklist was changed by another request.");
             if (sqlMessage.Contains("UX_Inspections_Number", StringComparison.OrdinalIgnoreCase))
             {
                 throw new ConflictException(

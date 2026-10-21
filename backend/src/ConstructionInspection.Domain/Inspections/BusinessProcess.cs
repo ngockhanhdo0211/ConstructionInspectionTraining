@@ -5,9 +5,10 @@ public sealed class BusinessProcess
     private BusinessProcess() { }
 
     public Guid Id { get; private set; }
-    public Guid InspectionId { get; private set; }
+    public Guid? InspectionId { get; private set; }
+    public Guid? ChecklistId { get; private set; }
     public ProcessEntityType EntityType { get; private set; }
-    public InspectionStatus Status { get; private set; }
+    public ProcessStatus Status { get; private set; }
     public Guid? AssignedToUserId { get; private set; }
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAt { get; private set; }
@@ -16,7 +17,7 @@ public sealed class BusinessProcess
     public DateTime? CompletedAt { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
-    public static BusinessProcess CreateDraft(
+    public static BusinessProcess CreateForInspection(
         Guid id, Guid inspectionId, Guid actorId, DateTime createdAtUtc)
     {
         if (id == Guid.Empty || inspectionId == Guid.Empty || actorId == Guid.Empty)
@@ -26,83 +27,121 @@ public sealed class BusinessProcess
             Id = id,
             InspectionId = inspectionId,
             EntityType = ProcessEntityType.Inspection,
-            Status = InspectionStatus.Draft,
+            Status = ProcessStatus.Draft,
             CreatedByUserId = actorId,
             CreatedAt = InspectionRules.EnsureUtc(createdAtUtc)
         };
     }
 
+    public static BusinessProcess CreateDraft(
+        Guid id, Guid inspectionId, Guid actorId, DateTime createdAtUtc) =>
+        CreateForInspection(id, inspectionId, actorId, createdAtUtc);
+
+    public static BusinessProcess CreateForChecklist(
+        Guid id, Guid checklistId, Guid actorId, DateTime createdAtUtc)
+    {
+        if (id == Guid.Empty || checklistId == Guid.Empty || actorId == Guid.Empty)
+            throw InspectionRules.Error("process.invalid_identity", "Process, Checklist and actor identifiers are required.");
+        return new BusinessProcess
+        {
+            Id = id,
+            ChecklistId = checklistId,
+            EntityType = ProcessEntityType.Checklist,
+            Status = ProcessStatus.Draft,
+            CreatedByUserId = actorId,
+            CreatedAt = InspectionRules.EnsureUtc(createdAtUtc)
+        };
+    }
+
+    public void EnsureOwnerInvariant()
+    {
+        var hasInspection = InspectionId.HasValue;
+        var hasChecklist = ChecklistId.HasValue;
+        if (hasInspection == hasChecklist
+            || EntityType == ProcessEntityType.Inspection && !hasInspection
+            || EntityType == ProcessEntityType.Checklist && !hasChecklist)
+            throw InspectionRules.Error("process.owner_invalid", "A process must have exactly one owner matching its entity type.");
+    }
+
     public void EnsureDraft()
     {
-        if (Status != InspectionStatus.Draft)
+        EnsureInspectionProcess();
+        if (Status != ProcessStatus.Draft)
             throw InspectionRules.Error("inspection.invalid_state", "The Inspection must be Draft.");
     }
 
     public void EnsureEditable()
     {
-        if (Status is not (InspectionStatus.Draft or InspectionStatus.Recheck))
+        EnsureInspectionProcess();
+        if (Status is not (ProcessStatus.Draft or ProcessStatus.Recheck))
             throw InspectionRules.Error("inspection.invalid_state", "Only Draft or Recheck Inspection data can be saved.");
     }
 
-    public InspectionStatus Submit(Guid reviewerUserId, DateTime occurredAtUtc)
+    public ProcessStatus Submit(Guid reviewerUserId, DateTime occurredAtUtc)
     {
-        if (Status is not (InspectionStatus.Draft or InspectionStatus.Recheck))
+        EnsureInspectionProcess();
+        if (Status is not (ProcessStatus.Draft or ProcessStatus.Recheck))
             throw InspectionRules.Error("inspection.invalid_state", "Only Draft or Recheck Inspections can be submitted.");
         if (reviewerUserId == Guid.Empty)
             throw InspectionRules.Error("inspection.reviewer_invalid", "Reviewer is required.");
-        if (Status == InspectionStatus.Recheck && AssignedToUserId != reviewerUserId)
+        if (Status == ProcessStatus.Recheck && AssignedToUserId != reviewerUserId)
             throw InspectionRules.Error("inspection.reviewer_change_forbidden", "Re-submit must keep the assigned Reviewer.");
 
         var from = Status;
         AssignedToUserId = reviewerUserId;
-        Status = InspectionStatus.Submitted;
+        Status = ProcessStatus.Submitted;
         UpdatedAt = InspectionRules.EnsureUtc(occurredAtUtc);
         DueAt = null;
         CompletedAt = null;
         return from;
     }
 
-    public InspectionStatus StartReview(Guid actorId, DateTime occurredAtUtc)
+    public ProcessStatus StartReview(Guid actorId, DateTime occurredAtUtc)
     {
+        EnsureInspectionProcess();
         EnsureAssignedReviewer(actorId);
-        EnsureStatus(InspectionStatus.Submitted);
-        return TransitionTo(InspectionStatus.UnderReview, occurredAtUtc);
+        EnsureStatus(ProcessStatus.Submitted);
+        return TransitionTo(ProcessStatus.UnderReview, occurredAtUtc);
     }
 
-    public InspectionStatus Approve(Guid actorId, DateTime occurredAtUtc)
+    public ProcessStatus Approve(Guid actorId, DateTime occurredAtUtc)
     {
+        EnsureInspectionProcess();
         EnsureAssignedReviewer(actorId);
-        EnsureStatus(InspectionStatus.UnderReview);
-        var from = TransitionTo(InspectionStatus.Approved, occurredAtUtc);
+        EnsureStatus(ProcessStatus.UnderReview);
+        var from = TransitionTo(ProcessStatus.Approved, occurredAtUtc);
         CompletedAt = InspectionRules.EnsureUtc(occurredAtUtc);
         return from;
     }
 
-    public InspectionStatus Reject(Guid actorId, string reason, DateTime occurredAtUtc)
+    public ProcessStatus Reject(Guid actorId, string reason, DateTime occurredAtUtc)
     {
+        EnsureInspectionProcess();
         EnsureRequiredReason(reason);
         EnsureAssignedReviewer(actorId);
-        EnsureStatus(InspectionStatus.UnderReview);
-        var from = TransitionTo(InspectionStatus.Rejected, occurredAtUtc);
+        EnsureStatus(ProcessStatus.UnderReview);
+        var from = TransitionTo(ProcessStatus.Rejected, occurredAtUtc);
         CompletedAt = InspectionRules.EnsureUtc(occurredAtUtc);
         return from;
     }
 
-    public InspectionStatus RequestRecheck(Guid actorId, string reason, DateTime occurredAtUtc)
+    public ProcessStatus RequestRecheck(Guid actorId, string reason, DateTime occurredAtUtc)
     {
+        EnsureInspectionProcess();
         EnsureRequiredReason(reason);
         EnsureAssignedReviewer(actorId);
-        EnsureStatus(InspectionStatus.UnderReview);
-        var from = TransitionTo(InspectionStatus.Recheck, occurredAtUtc);
+        EnsureStatus(ProcessStatus.UnderReview);
+        var from = TransitionTo(ProcessStatus.Recheck, occurredAtUtc);
         CompletedAt = null;
         return from;
     }
 
-    public (InspectionStatus FromStatus, Guid PreviousReviewerUserId) ReassignReviewer(
+    public (ProcessStatus FromStatus, Guid PreviousReviewerUserId) ReassignReviewer(
         Guid reviewerUserId, string reason, DateTime occurredAtUtc)
     {
+        EnsureInspectionProcess();
         EnsureRequiredReason(reason);
-        if (Status is not (InspectionStatus.Submitted or InspectionStatus.UnderReview))
+        if (Status is not (ProcessStatus.Submitted or ProcessStatus.UnderReview))
             throw InspectionRules.Error("inspection.invalid_state", "Reviewer can only be reassigned while Submitted or UnderReview.");
         if (!AssignedToUserId.HasValue)
             throw InspectionRules.Error("inspection.reviewer_missing", "The Inspection has no assigned Reviewer.");
@@ -111,10 +150,90 @@ public sealed class BusinessProcess
 
         var result = (Status, AssignedToUserId.Value);
         AssignedToUserId = reviewerUserId;
-        Status = InspectionStatus.Submitted;
+        Status = ProcessStatus.Submitted;
         UpdatedAt = InspectionRules.EnsureUtc(occurredAtUtc);
         CompletedAt = null;
         return result;
+    }
+
+    public ProcessStatus StartChecklist(DateTime occurredAtUtc)
+    {
+        EnsureChecklistProcess();
+        EnsureStatus(ProcessStatus.Draft);
+        return TransitionTo(ProcessStatus.InProgress, occurredAtUtc);
+    }
+
+    public ProcessStatus ResumeChecklist(DateTime occurredAtUtc)
+    {
+        EnsureChecklistProcess();
+        EnsureStatus(ProcessStatus.Recheck);
+        return TransitionTo(ProcessStatus.InProgress, occurredAtUtc);
+    }
+
+    public ProcessStatus SubmitChecklist(Guid reviewerUserId, DateTime occurredAtUtc)
+    {
+        EnsureChecklistProcess();
+        EnsureStatus(ProcessStatus.InProgress);
+        if (reviewerUserId == Guid.Empty)
+            throw InspectionRules.Error("checklist.reviewer_invalid", "Reviewer is required.");
+        if (AssignedToUserId.HasValue && AssignedToUserId != reviewerUserId)
+            throw InspectionRules.Error("checklist.reviewer_change_forbidden", "Re-submit must keep the assigned Reviewer.");
+        AssignedToUserId = reviewerUserId;
+        return TransitionTo(ProcessStatus.Submitted, occurredAtUtc);
+    }
+
+    public ProcessStatus StartChecklistReview(Guid actorId, DateTime occurredAtUtc)
+    {
+        EnsureChecklistProcess();
+        EnsureAssignedReviewer(actorId);
+        EnsureStatus(ProcessStatus.Submitted);
+        return TransitionTo(ProcessStatus.UnderReview, occurredAtUtc);
+    }
+
+    public ProcessStatus ApproveChecklist(Guid actorId, DateTime occurredAtUtc)
+    {
+        EnsureChecklistProcess();
+        EnsureAssignedReviewer(actorId);
+        EnsureStatus(ProcessStatus.UnderReview);
+        var from = TransitionTo(ProcessStatus.Approved, occurredAtUtc);
+        CompletedAt = InspectionRules.EnsureUtc(occurredAtUtc);
+        return from;
+    }
+
+    public ProcessStatus RejectChecklist(Guid actorId, string reason, DateTime occurredAtUtc)
+    {
+        EnsureChecklistProcess();
+        EnsureRequiredReason(reason);
+        EnsureAssignedReviewer(actorId);
+        EnsureStatus(ProcessStatus.UnderReview);
+        var from = TransitionTo(ProcessStatus.Rejected, occurredAtUtc);
+        CompletedAt = InspectionRules.EnsureUtc(occurredAtUtc);
+        return from;
+    }
+
+    public ProcessStatus RequestChecklistRecheck(Guid actorId, string reason, DateTime occurredAtUtc)
+    {
+        EnsureChecklistProcess();
+        EnsureRequiredReason(reason);
+        EnsureAssignedReviewer(actorId);
+        EnsureStatus(ProcessStatus.UnderReview);
+        var from = TransitionTo(ProcessStatus.Recheck, occurredAtUtc);
+        CompletedAt = null;
+        return from;
+    }
+
+    private void EnsureInspectionProcess()
+    {
+        EnsureOwnerInvariant();
+        if (EntityType != ProcessEntityType.Inspection)
+            throw InspectionRules.Error("process.entity_type_mismatch", "Checklist processes cannot use Inspection transitions.");
+    }
+
+    private void EnsureChecklistProcess()
+    {
+        EnsureOwnerInvariant();
+        if (EntityType != ProcessEntityType.Checklist)
+            throw InspectionRules.Error("process.entity_type_mismatch", "Inspection processes cannot use Checklist transitions.");
     }
 
     private void EnsureAssignedReviewer(Guid actorId)
@@ -123,13 +242,13 @@ public sealed class BusinessProcess
             throw InspectionRules.Error("inspection.not_assigned_reviewer", "Only the assigned Reviewer can perform this action.");
     }
 
-    private void EnsureStatus(InspectionStatus expected)
+    private void EnsureStatus(ProcessStatus expected)
     {
         if (Status != expected)
             throw InspectionRules.Error("inspection.invalid_state", $"The Inspection must be {expected}.");
     }
 
-    private InspectionStatus TransitionTo(InspectionStatus target, DateTime occurredAtUtc)
+    private ProcessStatus TransitionTo(ProcessStatus target, DateTime occurredAtUtc)
     {
         var from = Status;
         Status = target;

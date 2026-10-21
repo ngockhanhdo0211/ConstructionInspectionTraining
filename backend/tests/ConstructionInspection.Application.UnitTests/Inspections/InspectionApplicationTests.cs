@@ -38,7 +38,7 @@ public sealed class InspectionApplicationTests
         Assert.Null(repository.Inspection.ReviewerUserId);
         Assert.Equal(2, repository.Inspection.NextRevisionNumber);
         Assert.Equal(1, repository.Submission!.RevisionNumber);
-        Assert.Equal(InspectionStatus.Draft, repository.Process!.Status);
+        Assert.Equal(ProcessStatus.Draft, repository.Process!.Status);
         Assert.Equal("Create", repository.History!.Action);
         Assert.Equal(1, unit.TransactionCount);
         Assert.Equal(2, unit.SaveCount);
@@ -287,7 +287,7 @@ public sealed class InspectionApplicationTests
             reviewer, new FakeClock(), repository, reviewers, new FakeUnitOfWork())
             .Handle(new(repository.Inspection.Id, "Correct values", ""), CancellationToken.None);
 
-        Assert.Equal(InspectionStatus.Recheck, repository.Process!.Status);
+        Assert.Equal(ProcessStatus.Recheck, repository.Process!.Status);
         Assert.Equal("RequestRecheck", repository.History!.Action);
         Assert.Equal("Correct values", repository.History.Note);
     }
@@ -316,8 +316,8 @@ public sealed class InspectionApplicationTests
         Assert.Equal(expectedStatus, result.Status);
         Assert.NotNull(result.CompletedAt);
         Assert.Equal(expectedAction, repository.History!.Action);
-        Assert.Equal(InspectionStatus.UnderReview, repository.History.FromStatus);
-        Assert.Equal(expectedStatus, repository.History.ToStatus);
+        Assert.Equal(ProcessStatus.UnderReview, repository.History.FromStatus);
+        Assert.Equal(expectedStatus.ToProcessStatus(), repository.History.ToStatus);
     }
 
     [Fact]
@@ -341,8 +341,8 @@ public sealed class InspectionApplicationTests
         Assert.Equal(InspectionStatus.Submitted, result.Status);
         Assert.Equal(ReviewerId, repository.History!.PreviousAssignedToUserId);
         Assert.Equal(replacement, repository.History.NewAssignedToUserId);
-        Assert.Equal(InspectionStatus.UnderReview, repository.History.FromStatus);
-        Assert.Equal(InspectionStatus.Submitted, repository.History.ToStatus);
+        Assert.Equal(ProcessStatus.UnderReview, repository.History.FromStatus);
+        Assert.Equal(ProcessStatus.Submitted, repository.History.ToStatus);
     }
 
     [Fact]
@@ -606,7 +606,7 @@ public sealed class InspectionApplicationTests
         {
             var i = repository.Inspection!; var s = repository.Submission!; var p = repository.Process!;
             InspectionDetailDto value = new(i.Id, i.Number, i.ConstructionObjectId, "OBJ", "Object", i.Title, i.Description,
-                new(TemplateId, "FORM", "Form", VersionId, 2, Schema), p.Status, i.CreatedByUserId, i.ReviewerUserId,
+                new(TemplateId, "FORM", "Form", VersionId, 2, Schema), p.Status.ToInspectionStatus(), i.CreatedByUserId, i.ReviewerUserId,
                 i.CreatedAt, i.UpdatedAt, new(s.Id, 1, s.DataJson, s.CreatedAt, s.UpdatedAt, null, ""), "", "");
             return Task.FromResult<InspectionDetailDto?>(value);
         }

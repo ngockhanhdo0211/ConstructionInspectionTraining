@@ -51,7 +51,7 @@ public sealed class SubmitInspectionCommandHandler(
             InspectionRowVersion.EnsureMatches(aggregate.Inspection.RowVersion, request.InspectionRowVersion, nameof(request.InspectionRowVersion));
             InspectionRowVersion.EnsureMatches(aggregate.Submission.RowVersion, request.SubmissionRowVersion, nameof(request.SubmissionRowVersion));
             InspectionRowVersion.EnsureMatches(aggregate.Process.RowVersion, request.ProcessRowVersion, nameof(request.ProcessRowVersion));
-            if (aggregate.Process.Status == InspectionStatus.Recheck && aggregate.Submission.SubmittedAt.HasValue)
+            if (aggregate.Process.Status == ProcessStatus.Recheck && aggregate.Submission.SubmittedAt.HasValue)
                 throw new ConflictException("inspection.revision_required", "A new editable revision must be saved before re-submit.");
 
             var reviewer = await WorkflowChecks.RequireEligibleReviewerAsync(
@@ -61,12 +61,12 @@ public sealed class SubmitInspectionCommandHandler(
             dataValidator.ValidateSubmit(pinned.SchemaJson, aggregate.Submission.DataJson);
 
             var now = clock.UtcNow;
-            var firstSubmit = aggregate.Process.Status == InspectionStatus.Draft;
+            var firstSubmit = aggregate.Process.Status == ProcessStatus.Draft;
             aggregate.Inspection.AssignReviewer(reviewer.UserId, now);
             var from = aggregate.Process.Submit(reviewer.UserId, now);
             aggregate.Submission.Submit(now);
             repository.AddHistory(ProcessHistory.Create(
-                Guid.NewGuid(), aggregate.Process.Id, from, InspectionStatus.Submitted,
+                Guid.NewGuid(), aggregate.Process.Id, from, ProcessStatus.Submitted,
                 "Submit", actorId, now, aggregate.Submission.Id,
                 newAssignedToUserId: firstSubmit ? reviewer.UserId : null));
             await unitOfWork.SaveChangesAsync(ct);
@@ -168,7 +168,7 @@ public sealed class ReassignInspectionReviewerCommandHandler(
             aggregate.Inspection.ReassignReviewer(reviewer.UserId, now);
             repository.AddHistory(ProcessHistory.Create(
                 Guid.NewGuid(), aggregate.Process.Id,
-                transition.FromStatus, InspectionStatus.Submitted,
+                transition.FromStatus, ProcessStatus.Submitted,
                 "ReassignReviewer", actorId, now, aggregate.Submission.Id,
                 request.Reason, transition.PreviousReviewerUserId, reviewer.UserId));
             await unitOfWork.SaveChangesAsync(ct);
@@ -208,7 +208,7 @@ internal static class WorkflowChecks
         string processRowVersion,
         string action,
         string? note,
-        Func<BusinessProcess, Guid, DateTime, InspectionStatus> transition,
+        Func<BusinessProcess, Guid, DateTime, ProcessStatus> transition,
         CancellationToken cancellationToken)
     {
         var actorId = InspectionAuthorization.RequireReviewer(currentUser);
@@ -233,7 +233,7 @@ internal static class WorkflowChecks
 
     public static InspectionWorkflowResultDto ToResult(InspectionWriteAggregate aggregate) => new(
         aggregate.Inspection.Id,
-        aggregate.Process.Status,
+        aggregate.Process.Status.ToInspectionStatus(),
         aggregate.Inspection.ReviewerUserId,
         aggregate.Submission.RevisionNumber,
         aggregate.Process.CompletedAt,
