@@ -115,3 +115,62 @@ export type InspectionDraft = {
   id: string; revisionNumber: number; dataJson: string; updatedAt: string
   inspectionRowVersion: string; submissionRowVersion: string; processRowVersion: string
 }
+
+export type ChecklistStatus = 'Draft' | 'InProgress' | 'Submitted' | 'UnderReview' | 'Approved' | 'Recheck' | 'Rejected'
+export type ChecklistItemResult = 'NotChecked' | 'Pass' | 'Fail' | 'NotApplicable'
+export type ChecklistListItem = {
+  id: string; number: string; title: string; constructionObjectId: string
+  constructionObjectCode: string; constructionObjectName: string; status: ChecklistStatus
+  createdByUserId: string; reviewerUserId?: string | null; itemCount: number
+  passCount: number; failCount: number; notApplicableCount: number; notCheckedCount: number
+  createdAt: string; updatedAt?: string | null
+}
+export type ChecklistItem = {
+  id: string; sequence: number; criterion: string; isRequired: boolean
+  result: ChecklistItemResult; note?: string | null; rowVersion: string
+}
+export type ChecklistInspection = { id: string; number: string; title: string }
+export type ChecklistDetail = {
+  id: string; number: string; constructionObjectId: string; constructionObjectCode: string
+  constructionObjectName: string; title: string; description?: string | null; status: ChecklistStatus
+  createdByUserId: string; reviewerUserId?: string | null; currentSubmissionId?: string | null
+  nextSubmissionNumber: number; createdAt: string; updatedAt?: string | null
+  items: ChecklistItem[]; inspections: ChecklistInspection[]
+  checklistRowVersion: string; processRowVersion: string
+}
+export type ChecklistWorkflowResult = {
+  checklistId: string; status: ChecklistStatus; reviewerUserId?: string | null
+  currentSubmissionId?: string | null; submissionNumber?: number | null; completedAt?: string | null
+  checklistRowVersion: string; processRowVersion: string
+}
+export type ChecklistItemsResult = {
+  items: ChecklistItem[]; checklistRowVersion: string; processRowVersion: string
+}
+export type ChecklistLinksResult = {
+  inspections: ChecklistInspection[]; checklistRowVersion: string; processRowVersion: string
+}
+export type ChecklistHistory = {
+  id: string; action: string; fromStatus?: ChecklistStatus | null; toStatus: ChecklistStatus
+  actorUserId: string; actorDisplayName: string; reason?: string | null; createdAt: string
+  checklistSubmissionId?: string | null; newReviewerUserId?: string | null
+}
+export type ChecklistSubmissionListItem = {
+  id: string; submissionNumber: number; submittedByUserId: string; submittedByDisplayName: string
+  submittedAt: string; itemCount: number; inspectionCount: number; isCurrent: boolean
+}
+export type ChecklistSubmissionItem = {
+  sourceChecklistItemId: string; sequence: number; criterion: string; isRequired: boolean
+  result: ChecklistItemResult; note?: string | null
+}
+export type ChecklistSubmissionDetail = {
+  id: string; submissionNumber: number; submittedByUserId: string; submittedByDisplayName: string
+  submittedAt: string; items: ChecklistSubmissionItem[]; inspections: ChecklistInspection[]; isCurrent: boolean
+}
+export type CreateChecklistInput = {
+  constructionObjectId: string; title: string; description?: string | null
+  items: Array<{ criterion: string; isRequired: boolean }>
+}
+export type UpdateChecklistItemsInput = {
+  checklistRowVersion: string; processRowVersion: string
+  items: Array<{ id?: string | null; rowVersion?: string | null; criterion: string; isRequired: boolean; result: ChecklistItemResult; note?: string | null }>
+}

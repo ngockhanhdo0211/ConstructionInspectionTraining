@@ -1,4 +1,4 @@
-import type { CreateConstructionObjectInput, ConstructionObjectDetail, ConstructionObjectInput, ConstructionObjectType, DeactivatedConstructionObject, UpdateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft, ReviewerOption, InspectionWorkflowResult, ProcessHistory, InspectionRevisionListItem, InspectionRevisionDetail } from './types'
+import type { CreateConstructionObjectInput, ConstructionObjectDetail, ConstructionObjectInput, ConstructionObjectType, DeactivatedConstructionObject, UpdateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft, ReviewerOption, InspectionWorkflowResult, ProcessHistory, InspectionRevisionListItem, InspectionRevisionDetail, ChecklistStatus, ChecklistListItem, ChecklistDetail, CreateChecklistInput, ChecklistWorkflowResult, UpdateChecklistItemsInput, ChecklistItemsResult, ChecklistLinksResult, ChecklistHistory, ChecklistSubmissionListItem, ChecklistSubmissionDetail } from './types'
 
 export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5277').replace(/\/$/, '')
 let getToken: () => string | null = () => null
@@ -76,6 +76,7 @@ export const deactivateFormTemplate = (id: string, rowVersion: string) =>
 
 export type InspectionListParameters = {
   pageNumber: number; pageSize: number; search?: string; status?: InspectionStatus | ''
+  constructionObjectId?: string; reviewerUserId?: string
   sortBy?: 'number' | 'title' | 'status' | 'createdAt' | 'updatedAt'; sortDirection?: 'asc' | 'desc'
 }
 function queryString(parameters: Record<string, string | number | undefined>) {
@@ -115,6 +116,38 @@ export const getInspectionRevisions = (id: string, pageNumber: number, pageSize:
   request<PagedResult<InspectionRevisionListItem>>(`/api/inspections/${encodeURIComponent(id)}/revisions?${queryString({ pageNumber, pageSize })}`, { signal })
 export const getInspectionRevision = (id: string, revisionNumber: number, signal?: AbortSignal) =>
   request<InspectionRevisionDetail>(`/api/inspections/${encodeURIComponent(id)}/revisions/${revisionNumber}`, { signal })
+
+export type ChecklistListParameters = {
+  pageNumber: number; pageSize: number; search?: string; status?: ChecklistStatus | ''
+  constructionObjectId?: string; reviewerUserId?: string
+  sortBy?: 'number' | 'title' | 'status' | 'createdAt' | 'updatedAt'; sortDirection?: 'asc' | 'desc'
+}
+export const getChecklists = (parameters: ChecklistListParameters, signal?: AbortSignal) =>
+  request<PagedResult<ChecklistListItem>>(`/api/checklists?${queryString(parameters)}`, { signal })
+export const getChecklist = (id: string, signal?: AbortSignal) =>
+  request<ChecklistDetail>(`/api/checklists/${encodeURIComponent(id)}`, { signal })
+export const createChecklist = (input: CreateChecklistInput) =>
+  request<ChecklistWorkflowResult>('/api/checklists', { method: 'POST', body: JSON.stringify(input) })
+export const startChecklist = (id: string, checklistRowVersion: string, processRowVersion: string) =>
+  request<ChecklistWorkflowResult>(`/api/checklists/${encodeURIComponent(id)}/start`, { method: 'POST', body: JSON.stringify({ checklistRowVersion, processRowVersion }) })
+export const updateChecklistItems = (id: string, input: UpdateChecklistItemsInput) =>
+  request<ChecklistItemsResult>(`/api/checklists/${encodeURIComponent(id)}/items`, { method: 'PUT', body: JSON.stringify(input) })
+export const replaceChecklistInspections = (id: string, inspectionIds: string[], checklistRowVersion: string, processRowVersion: string) =>
+  request<ChecklistLinksResult>(`/api/checklists/${encodeURIComponent(id)}/inspections`, { method: 'PUT', body: JSON.stringify({ inspectionIds, checklistRowVersion, processRowVersion }) })
+export const submitChecklist = (id: string, reviewerUserId: string, checklistRowVersion: string, processRowVersion: string) =>
+  request<ChecklistWorkflowResult>(`/api/checklists/${encodeURIComponent(id)}/submit`, { method: 'POST', body: JSON.stringify({ reviewerUserId, checklistRowVersion, processRowVersion }) })
+export const startChecklistReview = (id: string, processRowVersion: string) => checklistProcess(id, 'start-review', { processRowVersion })
+export const approveChecklist = (id: string, comment: string | null, processRowVersion: string) => checklistProcess(id, 'approve', { comment, processRowVersion })
+export const rejectChecklist = (id: string, reason: string, processRowVersion: string) => checklistProcess(id, 'reject', { reason, processRowVersion })
+export const requestChecklistRecheck = (id: string, reason: string, processRowVersion: string) => checklistProcess(id, 'recheck', { reason, processRowVersion })
+const checklistProcess = (id: string, action: string, body: Record<string, unknown>) =>
+  request<ChecklistWorkflowResult>(`/api/checklists/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(body) })
+export const getChecklistHistory = (id: string, pageNumber: number, pageSize: number, signal?: AbortSignal) =>
+  request<PagedResult<ChecklistHistory>>(`/api/checklists/${encodeURIComponent(id)}/history?${queryString({ pageNumber, pageSize })}`, { signal })
+export const getChecklistSubmissions = (id: string, pageNumber: number, pageSize: number, signal?: AbortSignal) =>
+  request<PagedResult<ChecklistSubmissionListItem>>(`/api/checklists/${encodeURIComponent(id)}/submissions?${queryString({ pageNumber, pageSize })}`, { signal })
+export const getChecklistSubmission = (id: string, submissionNumber: number, signal?: AbortSignal) =>
+  request<ChecklistSubmissionDetail>(`/api/checklists/${encodeURIComponent(id)}/submissions/${submissionNumber}`, { signal })
 
 export function uploadDrawing(file: File, onProgress: (value: number) => void): Promise<UploadResponse> {
   return new Promise((resolve, reject) => {

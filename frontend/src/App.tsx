@@ -17,6 +17,9 @@ import { ConstructionObjectManagementRoute } from './components/ConstructionObje
 import { ConstructionObjectsPage } from './pages/ConstructionObjectsPage'
 import { NewConstructionObjectPage } from './pages/NewConstructionObjectPage'
 import { ConstructionObjectDetailPage } from './pages/ConstructionObjectDetailPage'
+import { ChecklistsPage } from './pages/ChecklistsPage'
+import { NewChecklistPage } from './pages/NewChecklistPage'
+import { ChecklistDetailPage } from './pages/ChecklistDetailPage'
 
 const DrawingViewerPage = lazy(() => import('./pages/DrawingViewerPage').then(module => ({ default: module.DrawingViewerPage })))
 
@@ -30,6 +33,9 @@ export default function App() {
       <Route path="/inspections" element={<InspectionsPage />} />
       <Route path="/inspections/new" element={<NewInspectionPage />} />
       <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+      <Route path="/checklists" element={<ChecklistsPage />} />
+      <Route path="/checklists/new" element={<NewChecklistPage />} />
+      <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
       <Route element={<ConstructionObjectManagementRoute />}>
         <Route path="/construction-objects" element={<ConstructionObjectsPage />} />
         <Route path="/construction-objects/new" element={<NewConstructionObjectPage />} />
