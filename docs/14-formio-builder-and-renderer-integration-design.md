@@ -1,5 +1,7 @@
 # Form.io Builder and Renderer Integration Design
 
+> **Status: Evaluated — FINAL NO-GO for production.** Exact package pair evaluated: `@formio/react@6.2.2` and `@formio/js@5.7.0`. Detailed evidence and the final decision are recorded in `docs/15-formio-compatibility-spike-result.md`. Production continues to use `FormSchemaEditor`, `DynamicInspectionForm`, the canonical safe schema, and backend fail-closed validation. `unsafe-eval` and external Form.io CDN access are not accepted. This document is retained as design/research history and is no longer an active implementation plan.
+
 ## 1. Document status
 
 - Status: proposed design; implementation is not authorized by this document.
