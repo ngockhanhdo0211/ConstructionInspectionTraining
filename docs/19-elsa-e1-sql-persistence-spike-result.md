@@ -1,5 +1,7 @@
 # Elsa E1 SQL Persistence Compatibility Spike Result
 
+> **Final follow-up:** Candidate workflow-owned receipt ở mục 11 đã được triển khai và kiểm chứng tại `docs/20-elsa-workflow-owned-receipt-spike-result.md`. Candidate thất bại atomic rollback gate: fault sau property mutation vẫn để receipt/shadow state durable, còn fault sớm tạo incident khiến resend không áp dụng an toàn. Candidate này không còn được đề xuất tiếp tục. Docs/20 là quyết định cuối cho ADR-006 và rollout Elsa.
+
 ## 1. Kết luận
 
 Checkpoint này đánh giá Elsa `3.9.0` và `Elsa.Persistence.EFCore.SqlServer` `3.9.0` trong project cô lập. Không có source production, solution production, migration nghiệp vụ hoặc database nghiệp vụ nào bị thay đổi.
@@ -210,9 +212,9 @@ Do đó spike thực hiện hai durable boundaries và dùng reconciliation đ�
 
 Cho tới lúc đó, E1 production source là **NO-GO**, dù reconciliation của spike đã qua các test crash hiện tại.
 
-## 11. Candidate redesign after the spike
+## 11. Candidate redesign after the spike — đã thử và bị loại
 
-Đây chỉ là candidate nghiên cứu để sửa ADR-006. Thiết kế chưa được Accepted và không được triển khai trong checkpoint này.
+Đây là candidate nghiên cứu từng được đề xuất để sửa ADR-006. Candidate đã được thử trong checkpoint kế tiếp và bị loại theo bằng chứng tại docs/20; phần dưới được giữ làm lịch sử kỹ thuật, không phải đề xuất triển khai hiện hành.
 
 Business transaction tiếp tục ghi transactional outbox. Mỗi event phải có tối thiểu:
 
@@ -245,7 +247,7 @@ Một spike riêng vẫn phải chứng minh bằng public Elsa API rằng:
 3. crash/restart không tạo hai logical transitions hoặc bỏ qua sequence;
 4. transport processed marker có thể phục hồi eventual mà không trở thành nguồn sự thật.
 
-Cho đến khi spike đó đạt, candidate này không thay đổi verdict NO-GO của ADR-006 và không cấp phép triển khai E1 production source.
+Spike đó đã hoàn tất và **không đạt**: workflow-owned receipt không rollback atomically ở mọi activity-fault window. Candidate này không được tiếp tục, không cấp phép E1 production source và không cấp phép E2. Xem docs/20 để có quyết định cuối.
 
 ## 12. Security result
 

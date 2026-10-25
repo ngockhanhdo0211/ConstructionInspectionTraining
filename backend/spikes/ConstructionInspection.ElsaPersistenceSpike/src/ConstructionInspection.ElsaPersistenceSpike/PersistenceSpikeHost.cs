@@ -67,6 +67,8 @@ public sealed class PersistenceSpikeHost : IAsyncDisposable
             }));
             elsa.AddActivity<WaitForPersistentInspectionLifecycle>();
             elsa.AddWorkflow<PersistentInspectionWorkflow>();
+            elsa.AddActivity<WaitForWorkflowOwnedInspectionEvent>();
+            elsa.AddWorkflow<WorkflowOwnedReceiptWorkflow>();
         });
 
         var host = builder.Build();
@@ -201,6 +203,130 @@ public sealed class PersistenceSpikeHost : IAsyncDisposable
         await using var db = await _spikeDbFactory.CreateDbContextAsync(cancellationToken);
         return await db.InboxMessages.LongCountAsync(x => x.DomainEventId == domainEventId, cancellationToken);
     }
+
+    public async Task<WorkflowOwnedDisposition> DispatchWorkflowOwnedAsync(
+        WorkflowOwnedEventEnvelope envelope,
+        WorkflowOwnedFaultPoint faultPoint = WorkflowOwnedFaultPoint.None,
+        CancellationToken cancellationToken = default)
+    {
+        var instanceId = await FindWorkflowOwnedInstanceIdAsync(envelope.InspectionId, cancellationToken);
+        if (instanceId is null)
+        {
+            if (envelope.AggregateSequence != 1 || envelope.EventType != InspectionEventTypes.Created)
+                return WorkflowOwnedDisposition.InstanceNotFound;
+
+            var client = await _workflowRuntime.CreateClientAsync(cancellationToken);
+            var response = await client.CreateAndRunInstanceAsync(
+                new CreateAndRunWorkflowInstanceRequest
+                {
+                    WorkflowDefinitionHandle = WorkflowDefinitionHandle.ByDefinitionId(WorkflowOwnedReceiptWorkflow.DefinitionId),
+                    CorrelationId = WorkflowOwnedCorrelation(envelope.InspectionId),
+                    Input = WorkflowOwnedInput(envelope, faultPoint)
+                },
+                cancellationToken);
+            if (string.IsNullOrWhiteSpace(response.WorkflowInstanceId))
+                return WorkflowOwnedDisposition.RuntimeDidNotCommit;
+            var created = await GetWorkflowOwnedSnapshotAsync(envelope.InspectionId, cancellationToken);
+            return Reflects(created, envelope)
+                ? WorkflowOwnedDisposition.Applied
+                : WorkflowOwnedDisposition.RuntimeDidNotCommit;
+        }
+
+        var before = await GetWorkflowOwnedSnapshotAsync(envelope.InspectionId, cancellationToken);
+        var classification = Classify(before, envelope);
+        await _stimulusSender.SendAsync(
+            WaitForWorkflowOwnedInspectionEvent.BookmarkName,
+            new WorkflowOwnedStimulus(WorkflowOwnedCorrelation(envelope.InspectionId)),
+            new StimulusMetadata
+            {
+                WorkflowInstanceId = instanceId,
+                CorrelationId = WorkflowOwnedCorrelation(envelope.InspectionId),
+                Input = WorkflowOwnedInput(envelope, faultPoint)
+            },
+            cancellationToken);
+        var after = await GetWorkflowOwnedSnapshotAsync(envelope.InspectionId, cancellationToken);
+        if (Reflects(after, envelope))
+            return classification == WorkflowOwnedDisposition.Duplicate
+                ? WorkflowOwnedDisposition.Duplicate
+                : WorkflowOwnedDisposition.Applied;
+        return Classify(after, envelope);
+    }
+
+    public async Task<WorkflowOwnedSnapshot> GetWorkflowOwnedSnapshotAsync(
+        Guid inspectionId,
+        CancellationToken cancellationToken = default)
+    {
+        var instanceId = await FindWorkflowOwnedInstanceIdAsync(inspectionId, cancellationToken)
+            ?? throw new KeyNotFoundException("The workflow-owned receipt instance was not found.");
+        var state = await (await _workflowRuntime.CreateClientAsync(instanceId, cancellationToken))
+            .ExportStateAsync(cancellationToken);
+        var lastIdText = PropertyAsString(state.Properties, WaitForWorkflowOwnedInspectionEvent.LastDomainEventIdProperty);
+        _ = Guid.TryParse(lastIdText, out var lastId);
+        var incidents = state.Incidents.Select(x => x.Message ?? "Incident").ToArray();
+        return new WorkflowOwnedSnapshot(
+            instanceId,
+            state.SubStatus.ToString(),
+            PropertyAsString(state.Properties, WaitForWorkflowOwnedInspectionEvent.CurrentShadowStateProperty) ?? string.Empty,
+            PropertyAsLong(state.Properties, WaitForWorkflowOwnedInspectionEvent.LastAppliedSequenceProperty),
+            lastId,
+            PropertyAsString(state.Properties, WaitForWorkflowOwnedInspectionEvent.LastPayloadHashProperty) ?? string.Empty,
+            state.Bookmarks.Count,
+            incidents);
+    }
+
+    private async Task<string?> FindWorkflowOwnedInstanceIdAsync(Guid inspectionId, CancellationToken cancellationToken)
+    {
+        await using var managementDb = await _managementDbFactory.CreateDbContextAsync(cancellationToken);
+        return await managementDb.WorkflowInstances.AsNoTracking()
+            .Where(x => x.CorrelationId == WorkflowOwnedCorrelation(inspectionId))
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static Dictionary<string, object> WorkflowOwnedInput(
+        WorkflowOwnedEventEnvelope envelope,
+        WorkflowOwnedFaultPoint faultPoint) => new()
+        {
+            ["InspectionId"] = WorkflowOwnedCorrelation(envelope.InspectionId),
+            ["Event"] = envelope,
+            ["FaultPoint"] = faultPoint
+        };
+
+    private static WorkflowOwnedDisposition Classify(WorkflowOwnedSnapshot snapshot, WorkflowOwnedEventEnvelope envelope)
+    {
+        if (envelope.AggregateSequence == snapshot.LastAppliedSequence)
+            return envelope.DomainEventId == snapshot.LastDomainEventId && envelope.PayloadHash == snapshot.LastPayloadHash
+                ? WorkflowOwnedDisposition.Duplicate
+                : WorkflowOwnedDisposition.Conflict;
+        if (envelope.AggregateSequence < snapshot.LastAppliedSequence)
+            return WorkflowOwnedDisposition.Obsolete;
+        if (envelope.AggregateSequence > snapshot.LastAppliedSequence + 1)
+            return WorkflowOwnedDisposition.Gap;
+        if (snapshot.CurrentShadowState is ShadowStates.Approved or ShadowStates.Rejected)
+            return WorkflowOwnedDisposition.TerminalConflict;
+        return WorkflowOwnedDisposition.InvalidTransition;
+    }
+
+    private static bool Reflects(WorkflowOwnedSnapshot snapshot, WorkflowOwnedEventEnvelope envelope) =>
+        snapshot.LastAppliedSequence == envelope.AggregateSequence
+        && snapshot.LastDomainEventId == envelope.DomainEventId
+        && snapshot.LastPayloadHash == envelope.PayloadHash;
+
+    private static long PropertyAsLong(IDictionary<string, object> properties, string key)
+    {
+        if (!properties.TryGetValue(key, out var value) || value is null)
+            return 0;
+        return value switch
+        {
+            long number => number,
+            int number => number,
+            JsonElement { ValueKind: JsonValueKind.Number } element => element.GetInt64(),
+            _ => long.Parse(value.ToString()!, System.Globalization.CultureInfo.InvariantCulture)
+        };
+    }
+
+    public static string WorkflowOwnedCorrelation(Guid inspectionId) => $"owned:{inspectionId:D}";
 
     private async Task<DispatchResult> ApplyToElsaAsync(
         InspectionEventPayload payload,

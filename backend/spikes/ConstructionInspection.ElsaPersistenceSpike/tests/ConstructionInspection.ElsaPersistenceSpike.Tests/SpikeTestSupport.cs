@@ -44,6 +44,13 @@ internal static class SpikeTestSupport
             null);
     }
 
+    public static WorkflowOwnedEventEnvelope OwnedEvent(
+        Guid inspectionId,
+        long sequence,
+        string eventType,
+        Guid? domainEventId = null) =>
+        WorkflowOwnedEventEnvelope.Create(inspectionId, sequence, eventType, domainEventId);
+
     public static async Task<long> DatabaseSizeBytesAsync()
     {
         await using var connection = new SqlConnection(ConnectionString);

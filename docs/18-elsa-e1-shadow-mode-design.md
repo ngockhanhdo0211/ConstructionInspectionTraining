@@ -1,12 +1,14 @@
 # Thiết kế Elsa E1 Shadow Mode
 
+> **Status note — superseded for rollout:** Thiết kế lịch sử trong tài liệu này đã được kiểm chứng tiếp bởi `docs/19-elsa-e1-sql-persistence-spike-result.md` và `docs/20-elsa-workflow-owned-receipt-spike-result.md`. Kết luận rollout cuối nằm ở docs/20: `E1-ADR-006` bị **Rejected cho Elsa 3.9.0**, E1 production source là **NO-GO** và E2 controlled orchestration là **NO-GO**. Không triển khai thêm Elsa production checkpoint từ thiết kế này.
+
 ## 1. Trạng thái tài liệu
 
 - Mục tiêu: chốt kiến trúc Elsa E1 ở chế độ shadow/mirror cho workflow Inspection trước khi sửa source production.
 - Baseline Git: `45660a34d6ea4bc24ae59432b951ba9fcc61811b` (`chore(workflows): validate Elsa E0 compatibility`).
 - Kết quả E0: GO về khả năng biểu diễn state machine bằng Elsa 3.9 trên .NET 10; kết quả này chưa chứng minh persistence, outbox, multi-instance dispatcher hoặc vận hành production.
 - E1 chỉ quan sát và đối chiếu. `Inspection`, `BusinessProcess`, `ProcessHistory` và transaction SQL hiện tại tiếp tục là nguồn sự thật duy nhất.
-- E2 controlled orchestration và production rollout chưa được phê duyệt. Tài liệu này không tự phê duyệt E2.
+- E2 controlled orchestration và production rollout không được phê duyệt; docs/20 đã chốt NO-GO cho cả E1 và E2 với Elsa 3.9.0.
 - Checkpoint này không cài package, không sửa production source, không tạo migration và không thay đổi database hoặc frontend.
 
 Các tài liệu nền đã được đối chiếu: `docs/09`, `docs/10`, `docs/12`, `docs/13`, `docs/16`, `docs/17`, source và tests E0, aggregate/process hiện tại, handlers Inspection, `IUnitOfWork`, `EfUnitOfWork`, `ApplicationDbContext`, configuration và composition root.
@@ -662,7 +664,7 @@ Spike phải dừng và báo blocker nếu không thể xác minh database targe
 | `E1-ADR-003` | Vị trí dữ liệu integration | Outbox ở `ConstructionInspectionDb`; Elsa runtime/inbox/mapping/comparison ở `ConstructionInspectionElsaDb`; không distributed transaction | Atomic với business commit nhưng cô lập operational persistence | Accepted | Không được đề xuất migration ngoài đúng database ownership |
 | `E1-ADR-004` | Delivery và cạnh tranh nhiều dispatcher | At-least-once với atomic claim/lease, batch hữu hạn và durable `DomainEventId` idempotency | Không mất message, phục hồi crash và tránh xử lý đồng thời | Requires Management Approval | Không được triển khai dispatcher production |
 | `E1-ADR-005` | Contract event E1 | Dùng chín event version 1 tại mục 6 với strict allowlist và minimal payload | Đồng nhất domain transition với bookmark, không lộ dữ liệu nghiệp vụ | Requires Management Approval | Không được đóng băng event DTO hoặc phát event production |
-| `E1-ADR-006` | Atomic single-effect phía Elsa | Inbox effect và Elsa state mutation phải atomic trong một local transaction Elsa DB bằng supported public API | Unique inbox riêng không đủ nếu crash giữa inbox và workflow commit | Proposed | Chặn toàn bộ E1 production source cho tới khi SQL persistence spike chứng minh |
+| `E1-ADR-006` | Atomic single-effect phía Elsa | Inbox effect và Elsa state mutation phải atomic trong một local transaction Elsa DB bằng supported public API | Workflow-owned receipt spike ở docs/20 chứng minh fault sau property mutation có thể persist receipt/state trong khi activity incident; fault sớm hơn cũng không cho resend an toàn | **Rejected for Elsa 3.9.0** | E1 production source và E2 controlled orchestration đều NO-GO; không mở thêm Elsa production implementation checkpoint |
 | `E1-ADR-007` | Retry và retention | Tối đa 5 lần, base 5 giây, cap 5 phút; processed giữ 30 ngày; dead-letter giữ 90 ngày hoặc đến resolved | Bounded recovery, capacity kiểm soát và giữ bằng chứng vận hành | Requires Management Approval | Không được triển khai retry/dead-letter cleanup production |
 | `E1-ADR-008` | Divergence và replay | Không auto-repair/replay; chỉ system/deployment operator dùng protected CLI sau này; replay giữ `DomainEventId` | Không bypass idempotency hoặc để shadow sửa nguồn sự thật | Requires Management Approval | Không được xây replay tool hoặc tự sửa mismatch |
 | `E1-ADR-009` | Ảnh hưởng health của shadow tới API | Shadow có health riêng ở trạng thái degraded; Elsa failure không làm business API unhealthy | E1 không được làm gián đoạn nghiệp vụ đã commit | Requires Management Approval | Không được chốt health/readiness policy production |
