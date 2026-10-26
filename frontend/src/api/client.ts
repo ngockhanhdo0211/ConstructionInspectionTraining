@@ -1,4 +1,4 @@
-import type { CreateConstructionObjectInput, ConstructionObjectDetail, ConstructionObjectInput, ConstructionObjectType, DeactivatedConstructionObject, UpdateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft, ReviewerOption, InspectionWorkflowResult, ProcessHistory, InspectionRevisionListItem, InspectionRevisionDetail, ChecklistStatus, ChecklistListItem, ChecklistDetail, CreateChecklistInput, ChecklistWorkflowResult, UpdateChecklistItemsInput, ChecklistItemsResult, ChecklistLinksResult, ChecklistHistory, ChecklistSubmissionListItem, ChecklistSubmissionDetail } from './types'
+import type { CreateConstructionObjectInput, ConstructionObjectDetail, ConstructionObjectInput, ConstructionObjectType, DeactivatedConstructionObject, UpdateConstructionObjectInput, DrawingObjectMapping, DrawingPageMappings, DrawingRectangle, LoginResponse, PagedResult, Drawing, Problem, UploadResponse, ConstructionObjectListItem, FormTemplateListItem, FormTemplateVersions, FormTemplateVersionDetail, FormTemplateCreated, FormTemplateDeactivated, InspectionListItem, InspectionStatus, FormTemplateOption, CreateInspectionInput, InspectionDetail, SaveInspectionDraftInput, InspectionDraft, ReviewerOption, InspectionWorkflowResult, ProcessHistory, InspectionRevisionListItem, InspectionRevisionDetail, ChecklistStatus, ChecklistListItem, ChecklistDetail, CreateChecklistInput, ChecklistWorkflowResult, UpdateChecklistItemsInput, ChecklistItemsResult, ChecklistLinksResult, ChecklistHistory, ChecklistSubmissionListItem, ChecklistSubmissionDetail, RfiStatus, RfiListItem, RfiDetail, RfiWorkflowResult, RfiHistory, RfiResponderOption, CreateRfiInput } from './types'
 
 export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5277').replace(/\/$/, '')
 let getToken: () => string | null = () => null
@@ -79,7 +79,7 @@ export type InspectionListParameters = {
   constructionObjectId?: string; reviewerUserId?: string
   sortBy?: 'number' | 'title' | 'status' | 'createdAt' | 'updatedAt'; sortDirection?: 'asc' | 'desc'
 }
-function queryString(parameters: Record<string, string | number | undefined>) {
+function queryString(parameters: Record<string, string | number | boolean | undefined>) {
   const search = new URLSearchParams()
   Object.entries(parameters).forEach(([key, value]) => { if (value !== undefined && value !== '') search.set(key, String(value)) })
   return search.toString()
@@ -148,6 +148,39 @@ export const getChecklistSubmissions = (id: string, pageNumber: number, pageSize
   request<PagedResult<ChecklistSubmissionListItem>>(`/api/checklists/${encodeURIComponent(id)}/submissions?${queryString({ pageNumber, pageSize })}`, { signal })
 export const getChecklistSubmission = (id: string, submissionNumber: number, signal?: AbortSignal) =>
   request<ChecklistSubmissionDetail>(`/api/checklists/${encodeURIComponent(id)}/submissions/${submissionNumber}`, { signal })
+
+export type RfiListParameters = {
+  pageNumber: number; pageSize: number; search?: string; status?: RfiStatus | ''
+  constructionObjectId?: string; assignedToMe?: boolean; overdue?: boolean
+  sortBy?: 'createdAt' | 'updatedAt' | 'number' | 'subject' | 'status' | 'dueAtUtc'
+  sortDirection?: 'asc' | 'desc'
+}
+export const getRfis = (parameters: RfiListParameters, signal?: AbortSignal) =>
+  request<PagedResult<RfiListItem>>(`/api/rfis?${queryString({ ...parameters })}`, { signal })
+export const getRfi = (id: string, signal?: AbortSignal) =>
+  request<RfiDetail>(`/api/rfis/${encodeURIComponent(id)}`, { signal })
+export const getRfiResponderOptions = (pageNumber: number, pageSize: number, search = '', signal?: AbortSignal) =>
+  request<PagedResult<RfiResponderOption>>(`/api/rfis/responder-options?${queryString({ pageNumber, pageSize, search })}`, { signal })
+export const createRfi = (input: CreateRfiInput) =>
+  request<RfiWorkflowResult>('/api/rfis', { method: 'POST', body: JSON.stringify(input) })
+export const saveRfiDraft = (id: string, subject: string, question: string, rfiRowVersion: string, processRowVersion: string) =>
+  rfiMutation(id, 'draft', { subject, question, rfiRowVersion, processRowVersion }, 'PUT')
+export const submitRfi = (id: string, responderUserId: string, rfiRowVersion: string, processRowVersion: string) =>
+  rfiMutation(id, 'submit', { responderUserId, rfiRowVersion, processRowVersion })
+export const reassignRfi = (id: string, responderUserId: string, reason: string, rfiRowVersion: string, processRowVersion: string) =>
+  rfiMutation(id, 'assign', { responderUserId, reason, rfiRowVersion, processRowVersion })
+export const respondRfi = (id: string, responseText: string, rfiRowVersion: string, processRowVersion: string) =>
+  rfiMutation(id, 'responses', { responseText, rfiRowVersion, processRowVersion })
+export const requestRfiClarification = (id: string, content: string, rfiRowVersion: string, processRowVersion: string) =>
+  rfiMutation(id, 'request-clarification', { content, rfiRowVersion, processRowVersion })
+export const closeRfi = (id: string, comment: string | null, rfiRowVersion: string, processRowVersion: string) =>
+  rfiMutation(id, 'close', { comment, rfiRowVersion, processRowVersion })
+export const cancelRfi = (id: string, reason: string, rfiRowVersion: string, processRowVersion: string) =>
+  rfiMutation(id, 'cancel', { reason, rfiRowVersion, processRowVersion })
+export const getRfiHistory = (id: string, pageNumber: number, pageSize: number, signal?: AbortSignal) =>
+  request<PagedResult<RfiHistory>>(`/api/rfis/${encodeURIComponent(id)}/history?${queryString({ pageNumber, pageSize })}`, { signal })
+const rfiMutation = (id: string, action: string, body: Record<string, unknown>, method = 'POST') =>
+  request<RfiWorkflowResult>(`/api/rfis/${encodeURIComponent(id)}/${action}`, { method, body: JSON.stringify(body) })
 
 export function uploadDrawing(file: File, onProgress: (value: number) => void): Promise<UploadResponse> {
   return new Promise((resolve, reject) => {

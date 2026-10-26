@@ -174,3 +174,36 @@ export type UpdateChecklistItemsInput = {
   checklistRowVersion: string; processRowVersion: string
   items: Array<{ id?: string | null; rowVersion?: string | null; criterion: string; isRequired: boolean; result: ChecklistItemResult; note?: string | null }>
 }
+
+export type RfiStatus = 'Draft' | 'Open' | 'Responded' | 'Closed' | 'Cancelled'
+export type RfiEntryType = 'Response' | 'ClarificationRequest'
+export type RfiListItem = {
+  id: string; number: string; subject: string; constructionObjectId: string
+  constructionObjectCode: string; constructionObjectName: string; status: RfiStatus
+  createdByUserId: string; assignedToUserId?: string | null; assignedToDisplayName?: string | null
+  dueAtUtc?: string | null; isOverdue: boolean; createdAt: string; updatedAt?: string | null
+  rfiRowVersion: string; processRowVersion: string
+}
+export type RfiEntry = {
+  id: string; entryNumber: number; entryType: RfiEntryType; content: string
+  createdByUserId: string; createdByDisplayName: string; createdAtUtc: string
+}
+export type RfiDetail = {
+  id: string; number: string; constructionObjectId: string; constructionObjectCode: string
+  constructionObjectName: string; subject: string; question: string; status: RfiStatus
+  createdByUserId: string; assignedToUserId?: string | null; assignedToDisplayName?: string | null
+  dueAtUtc?: string | null; completedAt?: string | null; createdAt: string; updatedAt?: string | null
+  entries: RfiEntry[]; rfiRowVersion: string; processRowVersion: string
+}
+export type RfiWorkflowResult = {
+  rfiId: string; status: RfiStatus; assignedToUserId?: string | null; dueAtUtc?: string | null
+  completedAt?: string | null; rfiRowVersion: string; processRowVersion: string
+  createdEntry?: RfiEntry | null
+}
+export type RfiHistory = {
+  id: string; action: string; fromStatus?: RfiStatus | null; toStatus: RfiStatus
+  actorUserId: string; actorDisplayName: string; reason?: string | null; performedAt: string
+  rfiEntryId?: string | null; previousAssignedToUserId?: string | null; newAssignedToUserId?: string | null
+}
+export type RfiResponderOption = { userId: string; displayName: string }
+export type CreateRfiInput = { constructionObjectId: string; subject: string; question: string }

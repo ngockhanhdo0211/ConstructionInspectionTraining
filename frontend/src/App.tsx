@@ -20,6 +20,10 @@ import { ConstructionObjectDetailPage } from './pages/ConstructionObjectDetailPa
 import { ChecklistsPage } from './pages/ChecklistsPage'
 import { NewChecklistPage } from './pages/NewChecklistPage'
 import { ChecklistDetailPage } from './pages/ChecklistDetailPage'
+import { RfiInspectorRoute } from './components/RfiInspectorRoute'
+import { RfisPage } from './pages/RfisPage'
+import { NewRfiPage } from './pages/NewRfiPage'
+import { RfiDetailPage } from './pages/RfiDetailPage'
 
 const DrawingViewerPage = lazy(() => import('./pages/DrawingViewerPage').then(module => ({ default: module.DrawingViewerPage })))
 
@@ -36,6 +40,11 @@ export default function App() {
       <Route path="/checklists" element={<ChecklistsPage />} />
       <Route path="/checklists/new" element={<NewChecklistPage />} />
       <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
+      <Route path="/rfis" element={<RfisPage />} />
+      <Route path="/rfis/:id" element={<RfiDetailPage />} />
+      <Route element={<RfiInspectorRoute />}>
+        <Route path="/rfis/new" element={<NewRfiPage />} />
+      </Route>
       <Route element={<ConstructionObjectManagementRoute />}>
         <Route path="/construction-objects" element={<ConstructionObjectsPage />} />
         <Route path="/construction-objects/new" element={<NewConstructionObjectPage />} />
