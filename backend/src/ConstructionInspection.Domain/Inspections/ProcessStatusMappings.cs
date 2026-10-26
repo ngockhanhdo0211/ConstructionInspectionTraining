@@ -1,4 +1,5 @@
 using ConstructionInspection.Domain.Checklists;
+using ConstructionInspection.Domain.Rfis;
 
 namespace ConstructionInspection.Domain.Inspections;
 
@@ -48,5 +49,25 @@ public static class ProcessStatusMappings
         ProcessStatus.Recheck => ChecklistStatus.Recheck,
         ProcessStatus.Rejected => ChecklistStatus.Rejected,
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Status is not valid for a Checklist process.")
+    };
+
+    public static ProcessStatus ToProcessStatus(this RfiStatus status) => status switch
+    {
+        RfiStatus.Draft => ProcessStatus.Draft,
+        RfiStatus.Open => ProcessStatus.Open,
+        RfiStatus.Responded => ProcessStatus.Responded,
+        RfiStatus.Closed => ProcessStatus.Closed,
+        RfiStatus.Cancelled => ProcessStatus.Cancelled,
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown RFI status.")
+    };
+
+    public static RfiStatus ToRfiStatus(this ProcessStatus status) => status switch
+    {
+        ProcessStatus.Draft => RfiStatus.Draft,
+        ProcessStatus.Open => RfiStatus.Open,
+        ProcessStatus.Responded => RfiStatus.Responded,
+        ProcessStatus.Closed => RfiStatus.Closed,
+        ProcessStatus.Cancelled => RfiStatus.Cancelled,
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Status is not valid for an RFI process.")
     };
 }

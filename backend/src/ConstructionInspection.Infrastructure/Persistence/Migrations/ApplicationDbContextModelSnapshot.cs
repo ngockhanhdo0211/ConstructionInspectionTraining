@@ -26,6 +26,8 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
             modelBuilder.HasSequence("InspectionNumberSequence");
 
+            modelBuilder.HasSequence("RfiNumberSequence");
+
             modelBuilder.Entity("ConstructionInspection.Domain.Checklists.Checklist", b =>
                 {
                     b.Property<Guid>("Id")
@@ -756,6 +758,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InspectionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("RfiId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -788,17 +793,22 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_BusinessProcesses_InspectionId")
                         .HasFilter("[InspectionId] IS NOT NULL");
 
+                    b.HasIndex("RfiId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BusinessProcesses_RfiId")
+                        .HasFilter("[RfiId] IS NOT NULL");
+
                     b.HasIndex("EntityType", "Status", "UpdatedAt")
                         .IsDescending(false, false, true)
                         .HasDatabaseName("IX_BusinessProcesses_EntityType_Status_UpdatedAt");
 
                     b.ToTable("BusinessProcesses", null, t =>
                         {
-                            t.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] IN ('Inspection','Checklist')");
+                            t.HasCheckConstraint("CK_BusinessProcesses_EntityType", "[EntityType] IN ('Inspection','Checklist','Rfi')");
 
-                            t.HasCheckConstraint("CK_BusinessProcesses_Owner", "([EntityType] = 'Inspection' AND [InspectionId] IS NOT NULL AND [ChecklistId] IS NULL) OR ([EntityType] = 'Checklist' AND [ChecklistId] IS NOT NULL AND [InspectionId] IS NULL)");
+                            t.HasCheckConstraint("CK_BusinessProcesses_Owner", "([EntityType] = 'Inspection' AND [InspectionId] IS NOT NULL AND [ChecklistId] IS NULL AND [RfiId] IS NULL) OR ([EntityType] = 'Checklist' AND [ChecklistId] IS NOT NULL AND [InspectionId] IS NULL AND [RfiId] IS NULL) OR ([EntityType] = 'Rfi' AND [RfiId] IS NOT NULL AND [InspectionId] IS NULL AND [ChecklistId] IS NULL)");
 
-                            t.HasCheckConstraint("CK_BusinessProcesses_Status", "[Status] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected') AND NOT ([EntityType] = 'Inspection' AND [Status] = 'InProgress')");
+                            t.HasCheckConstraint("CK_BusinessProcesses_Status", "([EntityType] = 'Inspection' AND [Status] IN ('Draft','Submitted','UnderReview','Approved','Recheck','Rejected')) OR ([EntityType] = 'Checklist' AND [Status] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected')) OR ([EntityType] = 'Rfi' AND [Status] IN ('Draft','Open','Responded','Closed','Cancelled'))");
                         });
                 });
 
@@ -977,6 +987,9 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("PreviousAssignedToUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("RfiEntryId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("SubmissionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -996,6 +1009,8 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("PreviousAssignedToUserId");
 
+                    b.HasIndex("RfiEntryId");
+
                     b.HasIndex("SubmissionId");
 
                     b.HasIndex("BusinessProcessId", "PerformedAt", "Id")
@@ -1003,11 +1018,122 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ProcessHistories", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] IN ('Create','Start','UpdateInspectionLinks','Submit','StartReview','Approve','Reject','RequestRecheck','Resume','ReassignReviewer','CreateRevision')");
+                            t.HasCheckConstraint("CK_ProcessHistories_Action", "[Action] IN ('Create','Start','UpdateInspectionLinks','Submit','StartReview','Approve','Reject','RequestRecheck','Resume','ReassignReviewer','CreateRevision','Respond','RequestClarification','Reassign','Close','Cancel')");
 
-                            t.HasCheckConstraint("CK_ProcessHistories_SubmissionOwner", "[SubmissionId] IS NULL OR [ChecklistSubmissionId] IS NULL");
+                            t.HasCheckConstraint("CK_ProcessHistories_SubmissionOwner", "([SubmissionId] IS NULL OR [ChecklistSubmissionId] IS NULL) AND ([RfiEntryId] IS NULL OR ([SubmissionId] IS NULL AND [ChecklistSubmissionId] IS NULL))");
 
-                            t.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected')");
+                            t.HasCheckConstraint("CK_ProcessHistories_ToStatus", "[ToStatus] IN ('Draft','InProgress','Submitted','UnderReview','Approved','Recheck','Rejected','Open','Responded','Closed','Cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Rfis.Rfi", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConstructionObjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("NextEntryNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Rfis_Number");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("ConstructionObjectId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.HasIndex("CreatedByUserId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.ToTable("Rfis", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Rfis_NextEntryNumber", "[NextEntryNumber] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Rfis.RfiEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EntryNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<Guid>("RfiId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("RfiId", "EntryNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RfiEntries_RfiId_EntryNumber");
+
+                    b.ToTable("RfiEntries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RfiEntries_EntryNumber", "[EntryNumber] > 0");
+
+                            t.HasCheckConstraint("CK_RfiEntries_EntryType", "[EntryType] IN ('Response','ClarificationRequest')");
                         });
                 });
 
@@ -1494,6 +1620,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .WithOne()
                         .HasForeignKey("ConstructionInspection.Domain.Inspections.BusinessProcess", "InspectionId")
                         .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ConstructionInspection.Domain.Rfis.Rfi", null)
+                        .WithOne()
+                        .HasForeignKey("ConstructionInspection.Domain.Inspections.BusinessProcess", "RfiId")
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("ConstructionInspection.Domain.Inspections.Inspection", b =>
@@ -1571,10 +1702,50 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasForeignKey("PreviousAssignedToUserId")
                         .OnDelete(DeleteBehavior.NoAction);
 
+                    b.HasOne("ConstructionInspection.Domain.Rfis.RfiEntry", null)
+                        .WithMany()
+                        .HasForeignKey("RfiEntryId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("ConstructionInspection.Domain.Inspections.InspectionSubmission", null)
                         .WithMany()
                         .HasForeignKey("SubmissionId")
                         .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Rfis.Rfi", b =>
+                {
+                    b.HasOne("ConstructionInspection.Domain.ConstructionObjects.ConstructionObject", null)
+                        .WithMany()
+                        .HasForeignKey("ConstructionObjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Rfis.RfiEntry", b =>
+                {
+                    b.HasOne("ConstructionInspection.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ConstructionInspection.Domain.Rfis.Rfi", null)
+                        .WithMany("Entries")
+                        .HasForeignKey("RfiId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
@@ -1631,6 +1802,11 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ConstructionInspection.Domain.Checklists.Checklist", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("ConstructionInspection.Domain.Rfis.Rfi", b =>
+                {
+                    b.Navigation("Entries");
                 });
 #pragma warning restore 612, 618
         }

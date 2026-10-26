@@ -8,5 +8,9 @@ public enum ProcessStatus
     Approved = 3,
     Recheck = 4,
     Rejected = 5,
-    InProgress = 6
+    InProgress = 6,
+    Open = 7,
+    Responded = 8,
+    Closed = 9,
+    Cancelled = 10
 }

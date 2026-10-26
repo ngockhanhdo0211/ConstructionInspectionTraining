@@ -2,6 +2,7 @@ namespace ConstructionInspection.Domain.Inspections;
 
 public enum ProcessEntityType
 {
-    Inspection,
-    Checklist
+    Inspection = 0,
+    Checklist = 1,
+    Rfi = 2
 }

@@ -5,6 +5,7 @@ using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
 using ConstructionInspection.Domain.Inspections;
+using ConstructionInspection.Domain.Rfis;
 using ConstructionInspection.Application.Drawings.Interfaces;
 using ConstructionInspection.Api.Drawings;
 using FluentValidation;
@@ -28,7 +29,9 @@ public sealed class GlobalExceptionHandler(
             ValidationException validationException => CreateValidationProblem(validationException),
             BadRequestException badRequest => CreateProblem(
                 StatusCodes.Status400BadRequest,
-                badRequest.Code.StartsWith("inspection.", StringComparison.Ordinal)
+                badRequest.Code.StartsWith("rfi.", StringComparison.Ordinal)
+                    ? "RFI validation failed"
+                    : badRequest.Code.StartsWith("inspection.", StringComparison.Ordinal)
                     ? "Inspection validation failed"
                     : badRequest.Code.StartsWith("checklist.", StringComparison.Ordinal)
                         ? "Checklist validation failed"
@@ -37,7 +40,9 @@ public sealed class GlobalExceptionHandler(
                 badRequest.Code),
             PayloadTooLargeException payload => CreateProblem(
                 413,
-                payload.Code.StartsWith("inspection.", StringComparison.Ordinal)
+                payload.Code.StartsWith("rfi.", StringComparison.Ordinal)
+                    ? "RFI content too large"
+                    : payload.Code.StartsWith("inspection.", StringComparison.Ordinal)
                     ? "Inspection data too large"
                     : "Upload too large",
                 payload.Message,
@@ -111,6 +116,12 @@ public sealed class GlobalExceptionHandler(
                 => CreateProblem(400, "Checklist validation failed", checklist.Message, checklist.Code),
             ChecklistDomainException checklist => CreateProblem(
                 StatusCodes.Status409Conflict, "Checklist conflict", checklist.Message, checklist.Code),
+            RfiDomainException rfi when rfi.Code is
+                "rfi.identity_invalid" or "rfi.number_invalid" or "rfi.subject_invalid" or
+                "rfi.question_invalid" or "rfi.entry_identity_invalid" or "rfi.entry_content_invalid" or
+                "rfi.timestamp_invalid" or "rfi.reason_invalid"
+                => CreateProblem(400, "RFI validation failed", rfi.Message, rfi.Code),
+            RfiDomainException rfi => CreateProblem(409, "RFI conflict", rfi.Message, rfi.Code),
             RangeNotSatisfiableException range => CreateRangeProblem(httpContext, range),
             ObjectStorageException storage => CreateProblem(
                 StatusCodes.Status502BadGateway,

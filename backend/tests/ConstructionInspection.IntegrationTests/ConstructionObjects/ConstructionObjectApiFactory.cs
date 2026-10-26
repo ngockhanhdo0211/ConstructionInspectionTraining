@@ -24,6 +24,8 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
     private const string ClearDatabaseSql = """
         DELETE FROM [ProcessHistories];
         DELETE FROM [BusinessProcesses];
+        DELETE FROM [RfiEntries];
+        DELETE FROM [Rfis];
         UPDATE [Checklists] SET [CurrentSubmissionId] = NULL;
         DELETE FROM [ChecklistSubmissionInspections];
         DELETE FROM [ChecklistSubmissionItems];
@@ -66,6 +68,7 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         JOIN [AspNetRoles] r ON r.[NormalizedName] = expected.[NormalizedRole];
         ALTER SEQUENCE [InspectionNumberSequence] RESTART WITH 1;
         ALTER SEQUENCE [ChecklistNumberSequence] RESTART WITH 1;
+        ALTER SEQUENCE [RfiNumberSequence] RESTART WITH 1;
         """;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -270,6 +273,15 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         var user = await userManager.FindByEmailAsync(email)
             ?? throw new InvalidOperationException("Integration-test user was not found.");
         EnsureSucceeded(await userManager.RemoveFromRoleAsync(user, role));
+    }
+
+    public async Task AddUserRoleAsync(string email, string role)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByEmailAsync(email)
+            ?? throw new InvalidOperationException("Integration-test user was not found.");
+        EnsureSucceeded(await userManager.AddToRoleAsync(user, role));
     }
 
     private static void EnsureSucceeded(IdentityResult result)

@@ -7,6 +7,7 @@ using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
 using ConstructionInspection.Domain.Inspections;
 using ConstructionInspection.Domain.Checklists;
+using ConstructionInspection.Domain.Rfis;
 
 namespace ConstructionInspection.Infrastructure.Persistence;
 
@@ -20,6 +21,11 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
         }
         catch (DbUpdateConcurrencyException exception)
         {
+            if (exception.Entries.Any(entry => entry.Entity is Rfi
+                || entry.Entity is BusinessProcess { EntityType: ProcessEntityType.Rfi }))
+            {
+                throw new ConflictException("rfi.concurrency_conflict", "The RFI was changed by another request.");
+            }
             if (exception.Entries.Any(entry => entry.Entity is Checklist or ChecklistItem))
             {
                 throw new ConflictException("checklist.concurrency_conflict", "The Checklist was changed by another request.");
@@ -60,6 +66,11 @@ public sealed class EfUnitOfWork(ApplicationDbContext context) : IUnitOfWork
             when (exception.InnerException is SqlException { Number: 2601 or 2627 })
         {
             var sqlMessage = exception.InnerException.Message;
+            if (sqlMessage.Contains("UX_Rfis_Number", StringComparison.OrdinalIgnoreCase))
+                throw new ConflictException("rfi.number_conflict", "The generated RFI Number conflicts with an existing record.");
+            if (sqlMessage.Contains("UX_BusinessProcesses_RfiId", StringComparison.OrdinalIgnoreCase)
+                || sqlMessage.Contains("UX_RfiEntries_RfiId_EntryNumber", StringComparison.OrdinalIgnoreCase))
+                throw new ConflictException("rfi.concurrency_conflict", "The RFI was changed by another request.");
             if (sqlMessage.Contains("UX_Checklists_Number", StringComparison.OrdinalIgnoreCase))
                 throw new ConflictException("checklist.number_conflict", "The generated Checklist Number conflicts with an existing record.");
             if (sqlMessage.Contains("UX_BusinessProcesses_ChecklistId", StringComparison.OrdinalIgnoreCase)

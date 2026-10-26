@@ -1,5 +1,7 @@
 namespace ConstructionInspection.Domain.Inspections;
 
+using ConstructionInspection.Domain.Rfis;
+
 public sealed class BusinessProcess
 {
     private BusinessProcess() { }
@@ -7,6 +9,7 @@ public sealed class BusinessProcess
     public Guid Id { get; private set; }
     public Guid? InspectionId { get; private set; }
     public Guid? ChecklistId { get; private set; }
+    public Guid? RfiId { get; private set; }
     public ProcessEntityType EntityType { get; private set; }
     public ProcessStatus Status { get; private set; }
     public Guid? AssignedToUserId { get; private set; }
@@ -53,13 +56,30 @@ public sealed class BusinessProcess
         };
     }
 
+    public static BusinessProcess CreateForRfi(Guid id, Guid rfiId, Guid actorId, DateTime createdAtUtc)
+    {
+        if (id == Guid.Empty || rfiId == Guid.Empty || actorId == Guid.Empty)
+            throw RfiRules.Error("rfi.process_identity_invalid", "Process, RFI and actor identifiers are required.");
+        return new BusinessProcess
+        {
+            Id = id,
+            RfiId = rfiId,
+            EntityType = ProcessEntityType.Rfi,
+            Status = ProcessStatus.Draft,
+            CreatedByUserId = actorId,
+            CreatedAt = RfiRules.EnsureUtc(createdAtUtc)
+        };
+    }
+
     public void EnsureOwnerInvariant()
     {
         var hasInspection = InspectionId.HasValue;
         var hasChecklist = ChecklistId.HasValue;
-        if (hasInspection == hasChecklist
+        var hasRfi = RfiId.HasValue;
+        if ((hasInspection ? 1 : 0) + (hasChecklist ? 1 : 0) + (hasRfi ? 1 : 0) != 1
             || EntityType == ProcessEntityType.Inspection && !hasInspection
-            || EntityType == ProcessEntityType.Checklist && !hasChecklist)
+            || EntityType == ProcessEntityType.Checklist && !hasChecklist
+            || EntityType == ProcessEntityType.Rfi && !hasRfi)
             throw InspectionRules.Error("process.owner_invalid", "A process must have exactly one owner matching its entity type.");
     }
 
@@ -222,6 +242,80 @@ public sealed class BusinessProcess
         return from;
     }
 
+    public ProcessStatus SubmitRfi(Guid reviewerUserId, DateTime occurredAtUtc)
+    {
+        EnsureRfiProcess();
+        EnsureRfiStatus(ProcessStatus.Draft);
+        if (reviewerUserId == Guid.Empty)
+            throw RfiRules.Error("rfi.reviewer_invalid", "Reviewer is required.");
+        var now = RfiRules.EnsureUtc(occurredAtUtc);
+        AssignedToUserId = reviewerUserId;
+        DueAt = now.Add(RfiRules.ResponseSla);
+        CompletedAt = null;
+        return TransitionRfi(ProcessStatus.Open, now);
+    }
+
+    public ProcessStatus RespondRfi(Guid actorId, DateTime occurredAtUtc)
+    {
+        EnsureRfiProcess();
+        EnsureRfiAssignedReviewer(actorId);
+        EnsureRfiStatus(ProcessStatus.Open);
+        DueAt = null;
+        return TransitionRfi(ProcessStatus.Responded, occurredAtUtc);
+    }
+
+    public ProcessStatus RequestRfiClarification(DateTime occurredAtUtc)
+    {
+        EnsureRfiProcess();
+        EnsureRfiStatus(ProcessStatus.Responded);
+        var now = RfiRules.EnsureUtc(occurredAtUtc);
+        if (!AssignedToUserId.HasValue)
+            throw RfiRules.Error("rfi.reviewer_missing", "The RFI has no assigned Reviewer.");
+        DueAt = now.Add(RfiRules.ResponseSla);
+        CompletedAt = null;
+        return TransitionRfi(ProcessStatus.Open, now);
+    }
+
+    public (ProcessStatus FromStatus, Guid PreviousReviewerUserId) ReassignRfi(
+        Guid reviewerUserId, string reason, DateTime occurredAtUtc)
+    {
+        EnsureRfiProcess();
+        EnsureRfiReason(reason);
+        EnsureRfiStatus(ProcessStatus.Open);
+        if (!AssignedToUserId.HasValue)
+            throw RfiRules.Error("rfi.reviewer_missing", "The RFI has no assigned Reviewer.");
+        if (reviewerUserId == Guid.Empty || reviewerUserId == AssignedToUserId)
+            throw RfiRules.Error("rfi.reviewer_unchanged", "The new Reviewer must differ from the current Reviewer.");
+        var now = RfiRules.EnsureUtc(occurredAtUtc);
+        var result = (Status, AssignedToUserId.Value);
+        AssignedToUserId = reviewerUserId;
+        DueAt = now.Add(RfiRules.ResponseSla);
+        UpdatedAt = now;
+        return result;
+    }
+
+    public ProcessStatus CloseRfi(DateTime occurredAtUtc)
+    {
+        EnsureRfiProcess();
+        EnsureRfiStatus(ProcessStatus.Responded);
+        var from = TransitionRfi(ProcessStatus.Closed, occurredAtUtc);
+        DueAt = null;
+        CompletedAt = RfiRules.EnsureUtc(occurredAtUtc);
+        return from;
+    }
+
+    public ProcessStatus CancelRfi(string reason, DateTime occurredAtUtc)
+    {
+        EnsureRfiProcess();
+        EnsureRfiReason(reason);
+        if (Status is not (ProcessStatus.Draft or ProcessStatus.Open))
+            throw RfiRules.Error("rfi.invalid_state", "Only Draft or Open RFIs can be cancelled.");
+        var from = TransitionRfi(ProcessStatus.Cancelled, occurredAtUtc);
+        DueAt = null;
+        CompletedAt = RfiRules.EnsureUtc(occurredAtUtc);
+        return from;
+    }
+
     private void EnsureInspectionProcess()
     {
         EnsureOwnerInvariant();
@@ -235,6 +329,36 @@ public sealed class BusinessProcess
         if (EntityType != ProcessEntityType.Checklist)
             throw InspectionRules.Error("process.entity_type_mismatch", "Inspection processes cannot use Checklist transitions.");
     }
+
+    private void EnsureRfiProcess()
+    {
+        EnsureOwnerInvariant();
+        if (EntityType != ProcessEntityType.Rfi)
+            throw RfiRules.Error("process.entity_type_mismatch", "Only RFI processes can use RFI transitions.");
+    }
+
+    private void EnsureRfiAssignedReviewer(Guid actorId)
+    {
+        if (!AssignedToUserId.HasValue || AssignedToUserId != actorId)
+            throw RfiRules.Error("rfi.not_assigned_reviewer", "Only the assigned Reviewer can respond.");
+    }
+
+    private void EnsureRfiStatus(ProcessStatus expected)
+    {
+        if (Status != expected)
+            throw RfiRules.Error("rfi.invalid_state", $"The RFI must be {expected}.");
+    }
+
+    private ProcessStatus TransitionRfi(ProcessStatus target, DateTime occurredAtUtc)
+    {
+        var from = Status;
+        Status = target;
+        UpdatedAt = RfiRules.EnsureUtc(occurredAtUtc);
+        return from;
+    }
+
+    private static void EnsureRfiReason(string reason) =>
+        RfiRules.RequiredText(reason, RfiRules.MaximumReasonLength, "rfi.reason_invalid", "Reason");
 
     private void EnsureAssignedReviewer(Guid actorId)
     {

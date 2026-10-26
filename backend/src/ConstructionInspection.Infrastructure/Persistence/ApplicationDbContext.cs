@@ -5,6 +5,7 @@ using ConstructionInspection.Domain.Drawings;
 using ConstructionInspection.Domain.DrawingMappings;
 using ConstructionInspection.Domain.FormTemplates;
 using ConstructionInspection.Domain.Inspections;
+using ConstructionInspection.Domain.Rfis;
 using ConstructionInspection.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -31,6 +32,8 @@ public sealed class ApplicationDbContext(
     public DbSet<ChecklistSubmission> ChecklistSubmissions => Set<ChecklistSubmission>();
     public DbSet<ChecklistSubmissionItem> ChecklistSubmissionItems => Set<ChecklistSubmissionItem>();
     public DbSet<ChecklistSubmissionInspection> ChecklistSubmissionInspections => Set<ChecklistSubmissionInspection>();
+    public DbSet<Rfi> Rfis => Set<Rfi>();
+    public DbSet<RfiEntry> RfiEntries => Set<RfiEntry>();
     private static readonly Guid InspectorRoleId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ReviewerRoleId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid ManagerRoleId = Guid.Parse("33333333-3333-3333-3333-333333333333");
@@ -43,6 +46,7 @@ public sealed class ApplicationDbContext(
         builder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
         builder.HasSequence<long>("InspectionNumberSequence").StartsAt(1).IncrementsBy(1);
         builder.HasSequence<long>("ChecklistNumberSequence").StartsAt(1).IncrementsBy(1);
+        builder.HasSequence<long>("RfiNumberSequence").StartsAt(1).IncrementsBy(1);
 
         builder.Entity<ApplicationUser>(user =>
         {

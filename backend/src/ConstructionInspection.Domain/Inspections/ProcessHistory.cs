@@ -1,3 +1,5 @@
+using ConstructionInspection.Domain.Rfis;
+
 namespace ConstructionInspection.Domain.Inspections;
 
 public sealed class ProcessHistory
@@ -14,6 +16,7 @@ public sealed class ProcessHistory
     public DateTime PerformedAt { get; private set; }
     public Guid? SubmissionId { get; private set; }
     public Guid? ChecklistSubmissionId { get; private set; }
+    public Guid? RfiEntryId { get; private set; }
     public Guid? PreviousAssignedToUserId { get; private set; }
     public Guid? NewAssignedToUserId { get; private set; }
 
@@ -125,6 +128,54 @@ public sealed class ProcessHistory
         };
     }
 
+    public static ProcessHistory CreateRfiInitial(
+        Guid id, Guid businessProcessId, Guid actorId, DateTime performedAtUtc)
+    {
+        ValidateIdentity(id, businessProcessId, actorId);
+        return new ProcessHistory
+        {
+            Id = id,
+            BusinessProcessId = businessProcessId,
+            ToStatus = ProcessStatus.Draft,
+            Action = "Create",
+            PerformedByUserId = actorId,
+            PerformedAt = RfiRules.EnsureUtc(performedAtUtc)
+        };
+    }
+
+    public static ProcessHistory CreateForRfi(Guid id, Guid businessProcessId,
+        ProcessStatus fromStatus, ProcessStatus toStatus, string action, Guid actorId,
+        DateTime performedAtUtc, string? note = null, Guid? rfiEntryId = null,
+        Guid? previousAssignedToUserId = null, Guid? newAssignedToUserId = null)
+    {
+        ValidateIdentity(id, businessProcessId, actorId);
+        if (!RfiActions.Contains(action, StringComparer.Ordinal))
+            throw RfiRules.Error("rfi.history_action_invalid", "RFI history action is invalid.");
+        var normalized = string.IsNullOrWhiteSpace(note) ? null
+            : RfiRules.RequiredText(note, RfiRules.MaximumReasonLength, "rfi.reason_invalid", "Reason");
+        if (action == "Respond" || action == "RequestClarification")
+        {
+            if (!rfiEntryId.HasValue)
+                throw RfiRules.Error("rfi.history_entry_required", "RFI entry reference is required.");
+        }
+        if (action == "Reassign" && (!previousAssignedToUserId.HasValue || !newAssignedToUserId.HasValue))
+            throw RfiRules.Error("rfi.reviewer_audit_invalid", "Reviewer reassignment audit is required.");
+        return new ProcessHistory
+        {
+            Id = id,
+            BusinessProcessId = businessProcessId,
+            FromStatus = fromStatus,
+            ToStatus = toStatus,
+            Action = action,
+            Note = normalized,
+            PerformedByUserId = actorId,
+            PerformedAt = RfiRules.EnsureUtc(performedAtUtc),
+            RfiEntryId = rfiEntryId,
+            PreviousAssignedToUserId = previousAssignedToUserId,
+            NewAssignedToUserId = newAssignedToUserId
+        };
+    }
+
     private static void ValidateIdentity(Guid id, Guid businessProcessId, Guid actorId)
     {
         if (id == Guid.Empty || businessProcessId == Guid.Empty || actorId == Guid.Empty)
@@ -141,5 +192,10 @@ public sealed class ProcessHistory
     [
         "Start", "UpdateInspectionLinks", "Submit", "StartReview", "Approve",
         "Reject", "RequestRecheck", "Resume"
+    ];
+
+    private static readonly string[] RfiActions =
+    [
+        "Submit", "Respond", "RequestClarification", "Reassign", "Close", "Cancel"
     ];
 }
