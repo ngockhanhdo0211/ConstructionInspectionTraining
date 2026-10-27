@@ -6,6 +6,7 @@ using ConstructionInspection.Application.FormTemplates.Interfaces;
 using ConstructionInspection.Application.Inspections.Interfaces;
 using ConstructionInspection.Application.Checklists.Interfaces;
 using ConstructionInspection.Application.Rfis.Interfaces;
+using ConstructionInspection.Application.Dashboard.Interfaces;
 using ConstructionInspection.Infrastructure.Authentication;
 using ConstructionInspection.Infrastructure.Identity;
 using ConstructionInspection.Infrastructure.Persistence;
@@ -83,6 +84,7 @@ public static class DependencyInjection
         services.AddScoped<IRfiReadService, RfiReadService>();
         services.AddScoped<IRfiReviewerService, RfiReviewerService>();
         services.AddScoped<IRfiNumberSequence, RfiNumberSequence>();
+        services.AddScoped<IDashboardReadService, DashboardReadService>();
         services.AddSingleton<IUploadStagingStore, TemporaryFileStagingStore>();
         services.AddSingleton<IPdfMetadataReader, PdfSharpMetadataReader>();
         services.AddOptions<ObjectStorageOptions>()

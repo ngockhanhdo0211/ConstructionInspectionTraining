@@ -4,22 +4,56 @@ using System.Text.Json;
 using ConstructionInspection.Infrastructure.Identity;
 using ConstructionInspection.Infrastructure.Persistence;
 using ConstructionInspection.Application.Drawings.Interfaces;
+using ConstructionInspection.IntegrationTests.Support;
+using ConstructionInspection.Application.Common.Interfaces;
+using ConstructionInspection.Application.Dashboard.Interfaces;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Identity;
 
 namespace ConstructionInspection.IntegrationTests.ConstructionObjects;
 
 public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program>
 {
-    private const string ExpectedDatabaseName = "ConstructionInspectionIntegrationTestDb";
+    private const string DefaultConnectionName = "IntegrationTestConnection";
+    private const string DefaultExpectedDatabaseName = "ConstructionInspectionIntegrationTestDb";
     private static readonly SemaphoreSlim DatabaseResetLock = new(1, 1);
-    private static bool databaseInitialized;
+    private static readonly HashSet<string> InitializedDatabases = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string connectionName;
+    private readonly string expectedDatabaseName;
+    private readonly string? connectionStringOverride;
+
+    public ConstructionObjectApiFactory()
+        : this(DefaultConnectionName, DefaultExpectedDatabaseName)
+    {
+    }
+
+    private ConstructionObjectApiFactory(
+        string connectionName,
+        string expectedDatabaseName,
+        string? connectionStringOverride = null)
+    {
+        this.connectionName = string.IsNullOrWhiteSpace(connectionName)
+            ? throw new ArgumentException("A connection-string name is required.", nameof(connectionName))
+            : connectionName;
+        this.expectedDatabaseName = string.IsNullOrWhiteSpace(expectedDatabaseName)
+            ? throw new ArgumentException("An exact database name is required.", nameof(expectedDatabaseName))
+            : expectedDatabaseName;
+        this.connectionStringOverride = connectionStringOverride;
+    }
+
+    public static ConstructionObjectApiFactory CreateForDatabase(
+        string connectionName,
+        string expectedDatabaseName,
+        string connectionString) =>
+        new(connectionName, expectedDatabaseName, connectionString);
 
     private const string ClearDatabaseSql = """
         DELETE FROM [ProcessHistories];
@@ -73,12 +107,14 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseContentRoot(FindApiContentRoot());
         var values = new ConfigurationBuilder()
             .AddUserSecrets<Program>(optional: false)
+            .AddEnvironmentVariables()
             .Build();
-        var connectionString = values.GetConnectionString("IntegrationTestConnection")
+        var connectionString = connectionStringOverride ?? values.GetConnectionString(connectionName)
             ?? throw new InvalidOperationException(
-                "ConnectionStrings:IntegrationTestConnection is required for integration tests.");
+                $"ConnectionStrings:{connectionName} is required for this test fixture.");
         var signingKey = values["Jwt:SigningKey"]
             ?? throw new InvalidOperationException(
                 "Jwt:SigningKey is required for integration tests.");
@@ -88,6 +124,7 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         EnsureSafeDatabase(connectionString);
 
         builder.UseEnvironment("Testing");
+        builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.UseSetting("ConnectionStrings:DefaultConnection", connectionString);
         builder.UseSetting(
             "Jwt:Issuer",
@@ -100,6 +137,20 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         builder.UseSetting("SeedUsers:DefaultPassword", seedPassword);
         builder.ConfigureServices(services =>
         {
+            services.AddHttpContextAccessor();
+            services.AddSingleton<SqlCommandCounter>();
+            services.AddSingleton<DashboardTimingCollector>();
+            services.AddDbContext<ApplicationDbContext>((provider, options) =>
+                options.AddInterceptors(provider.GetRequiredService<SqlCommandCounter>()));
+            services.RemoveAll<IDashboardReadService>();
+            services.AddScoped<DashboardReadService>();
+            services.AddScoped<IDashboardReadService>(provider => new TimedDashboardReadService(
+                provider.GetRequiredService<DashboardReadService>(),
+                provider.GetRequiredService<IHttpContextAccessor>(),
+                provider.GetRequiredService<DashboardTimingCollector>()));
+            services.RemoveAll<IClock>();
+            services.AddSingleton<TestClock>();
+            services.AddSingleton<IClock>(provider => provider.GetRequiredService<TestClock>());
             services.RemoveAll<IObjectStorage>();
             services.RemoveAll<IPdfMetadataReader>();
             services.AddSingleton<FakeObjectStorage>();
@@ -118,12 +169,12 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         await DatabaseResetLock.WaitAsync();
         try
         {
-            if (!databaseInitialized)
+            if (!InitializedDatabases.Contains(expectedDatabaseName))
             {
                 await InitializeDatabaseAsync();
                 await using var seedScope = Services.CreateAsyncScope();
                 await seedScope.ServiceProvider.GetRequiredService<DevelopmentIdentitySeeder>().SeedAsync();
-                databaseInitialized = true;
+                InitializedDatabases.Add(expectedDatabaseName);
             }
             else
             {
@@ -135,6 +186,7 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
             }
 
             Services.GetRequiredService<FakeObjectStorage>().Reset();
+            Services.GetRequiredService<TestClock>().UseSystemClock();
         }
         finally
         {
@@ -291,7 +343,7 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
                 $"Integration-test Identity operation failed: {string.Join(",", result.Errors.Select(x => x.Code))}");
     }
 
-    private static void EnsureSafeDatabase(string? connectionString)
+    private void EnsureSafeDatabase(string? connectionString)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -301,11 +353,30 @@ public sealed class ConstructionObjectApiFactory : WebApplicationFactory<Program
         var builder = new SqlConnectionStringBuilder(connectionString);
         if (!string.Equals(
                 builder.InitialCatalog,
-                ExpectedDatabaseName,
-                StringComparison.OrdinalIgnoreCase))
+                expectedDatabaseName,
+                StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                $"Refusing integration-test database mutation: Initial Catalog must be '{ExpectedDatabaseName}'.");
+                $"Refusing test database mutation: Initial Catalog must exactly match '{expectedDatabaseName}'.");
         }
+    }
+
+    private static string FindApiContentRoot()
+    {
+        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(
+                directory.FullName,
+                "backend",
+                "src",
+                "ConstructionInspection.Api");
+            if (File.Exists(Path.Combine(candidate, "ConstructionInspection.Api.csproj")))
+                return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate backend/src/ConstructionInspection.Api from the current directory.");
     }
 }

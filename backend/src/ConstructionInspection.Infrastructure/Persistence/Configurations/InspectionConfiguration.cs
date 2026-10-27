@@ -84,8 +84,52 @@ public sealed class BusinessProcessConfiguration : IEntityTypeConfiguration<Busi
         builder.HasIndex(x => x.InspectionId).IsUnique().HasFilter("[InspectionId] IS NOT NULL").HasDatabaseName("UX_BusinessProcesses_InspectionId");
         builder.HasIndex(x => x.ChecklistId).IsUnique().HasFilter("[ChecklistId] IS NOT NULL").HasDatabaseName("UX_BusinessProcesses_ChecklistId");
         builder.HasIndex(x => x.RfiId).IsUnique().HasFilter("[RfiId] IS NOT NULL").HasDatabaseName("UX_BusinessProcesses_RfiId");
+        builder.HasIndex(x => x.AssignedToUserId)
+            .HasDatabaseName("IX_BusinessProcesses_AssignedToUserId");
+        builder.HasIndex(x => x.CreatedByUserId)
+            .HasDatabaseName("IX_BusinessProcesses_CreatedByUserId");
         builder.HasIndex(x => new { x.EntityType, x.Status, x.UpdatedAt }).IsDescending(false, false, true)
             .HasDatabaseName("IX_BusinessProcesses_EntityType_Status_UpdatedAt");
+        builder.HasIndex(x => new
+        {
+            x.AssignedToUserId,
+            x.EntityType,
+            x.Status,
+            x.UpdatedAt,
+            x.Id
+        })
+            .IncludeProperties(x => new
+            {
+                x.InspectionId,
+                x.ChecklistId,
+                x.RfiId,
+                x.DueAt,
+                x.CreatedAt
+            })
+            .HasFilter("[AssignedToUserId] IS NOT NULL")
+            .HasDatabaseName("IX_BusinessProcesses_Dashboard_Assigned_Entity_Status_UpdatedAt_Id");
+        builder.HasIndex(x => new { x.DueAt, x.UpdatedAt, x.Id })
+            .IncludeProperties(x => new { x.RfiId, x.AssignedToUserId, x.CreatedAt })
+            .HasFilter("[EntityType] = 'Rfi' AND [Status] = 'Open' AND [DueAt] IS NOT NULL")
+            .HasDatabaseName("IX_BusinessProcesses_Dashboard_RfiOpen_DueAt_UpdatedAt_Id");
+        builder.HasIndex(x => new
+        {
+            x.CreatedByUserId,
+            x.EntityType,
+            x.Status,
+            x.UpdatedAt,
+            x.Id
+        })
+            .IncludeProperties(x => new
+            {
+                x.InspectionId,
+                x.ChecklistId,
+                x.RfiId,
+                x.DueAt,
+                x.CreatedAt
+            })
+            .HasFilter("[CreatedByUserId] IS NOT NULL")
+            .HasDatabaseName("IX_BusinessProcesses_Dashboard_Creator_Entity_Status_UpdatedAt_Id");
         builder.HasOne<Inspection>().WithOne().HasForeignKey<BusinessProcess>(x => x.InspectionId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<Checklist>().WithOne().HasForeignKey<BusinessProcess>(x => x.ChecklistId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<Rfi>().WithOne().HasForeignKey<BusinessProcess>(x => x.RfiId).OnDelete(DeleteBehavior.NoAction);

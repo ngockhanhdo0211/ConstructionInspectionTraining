@@ -1,5 +1,7 @@
 using System.Reflection;
+using ConstructionInspection.Domain.Checklists;
 using ConstructionInspection.Domain.Inspections;
+using ConstructionInspection.Domain.Rfis;
 
 namespace ConstructionInspection.Domain.UnitTests.Inspections;
 
@@ -60,6 +62,19 @@ public sealed class InspectionTests
         Assert.Equal(Actor, history.PerformedByUserId);
         Assert.Equal(Now, history.PerformedAt);
         Assert.Equal(submission.Id, history.SubmissionId);
+    }
+
+    [Fact]
+    public void ProcessFactories_PreserveOwnerCreatorAsImmutableAudit()
+    {
+        var inspection = BusinessProcess.CreateForInspection(Guid.NewGuid(), Guid.NewGuid(), Actor, Now);
+        var checklist = BusinessProcess.CreateForChecklist(Guid.NewGuid(), Guid.NewGuid(), Actor, Now);
+        var rfi = BusinessProcess.CreateForRfi(Guid.NewGuid(), Guid.NewGuid(), Actor, Now);
+
+        Assert.Equal(Actor, inspection.CreatedByUserId);
+        Assert.Equal(Actor, checklist.CreatedByUserId);
+        Assert.Equal(Actor, rfi.CreatedByUserId);
+        Assert.False(typeof(BusinessProcess).GetProperty(nameof(BusinessProcess.CreatedByUserId))!.SetMethod!.IsPublic);
     }
 
     [Fact]

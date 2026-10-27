@@ -779,14 +779,16 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AssignedToUserId");
+                    b.HasIndex("AssignedToUserId")
+                        .HasDatabaseName("IX_BusinessProcesses_AssignedToUserId");
 
                     b.HasIndex("ChecklistId")
                         .IsUnique()
                         .HasDatabaseName("UX_BusinessProcesses_ChecklistId")
                         .HasFilter("[ChecklistId] IS NOT NULL");
 
-                    b.HasIndex("CreatedByUserId");
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("IX_BusinessProcesses_CreatedByUserId");
 
                     b.HasIndex("InspectionId")
                         .IsUnique()
@@ -798,9 +800,27 @@ namespace ConstructionInspection.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_BusinessProcesses_RfiId")
                         .HasFilter("[RfiId] IS NOT NULL");
 
+                    b.HasIndex("DueAt", "UpdatedAt", "Id")
+                        .HasDatabaseName("IX_BusinessProcesses_Dashboard_RfiOpen_DueAt_UpdatedAt_Id")
+                        .HasFilter("[EntityType] = 'Rfi' AND [Status] = 'Open' AND [DueAt] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("DueAt", "UpdatedAt", "Id"), new[] { "RfiId", "AssignedToUserId", "CreatedAt" });
+
                     b.HasIndex("EntityType", "Status", "UpdatedAt")
                         .IsDescending(false, false, true)
                         .HasDatabaseName("IX_BusinessProcesses_EntityType_Status_UpdatedAt");
+
+                    b.HasIndex("AssignedToUserId", "EntityType", "Status", "UpdatedAt", "Id")
+                        .HasDatabaseName("IX_BusinessProcesses_Dashboard_Assigned_Entity_Status_UpdatedAt_Id")
+                        .HasFilter("[AssignedToUserId] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("AssignedToUserId", "EntityType", "Status", "UpdatedAt", "Id"), new[] { "InspectionId", "ChecklistId", "RfiId", "DueAt", "CreatedAt" });
+
+                    b.HasIndex("CreatedByUserId", "EntityType", "Status", "UpdatedAt", "Id")
+                        .HasDatabaseName("IX_BusinessProcesses_Dashboard_Creator_Entity_Status_UpdatedAt_Id")
+                        .HasFilter("[CreatedByUserId] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CreatedByUserId", "EntityType", "Status", "UpdatedAt", "Id"), new[] { "InspectionId", "ChecklistId", "RfiId", "DueAt", "CreatedAt" });
 
                     b.ToTable("BusinessProcesses", null, t =>
                         {

@@ -409,20 +409,11 @@ Mỗi module dùng một scoped base query từ aggregate join đúng process ow
    projection metadata.
 5. Truyền cùng `nowUtc` và `CancellationToken` vào mọi query.
 
-Ngân sách tối đa 6 SQL commands được phân bổ rõ ràng:
-
-1. Inspection grouped summary: một command.
-2. Inspection action queue `TOP (5)`: một command khi role có Inspection action.
-3. Checklist grouped summary: một command.
-4. Checklist action queue `TOP (5)`: một command khi role có Checklist action.
-5. RFI grouped summary, gồm các conditional aggregate cho quá hạn/chờ phản hồi:
-   một command.
-6. RFI action queue `TOP (5)`: một command khi role có RFI action.
-
-Query queue được bỏ qua khi role không có action của module đó, nên Administrator
-chỉ cần ba summary commands. Không query riêng cho từng status. Các command chạy
-tuần tự trên cùng DbContext vì EF Core DbContext không thread-safe; việc gộp an
-toàn đã thực hiện ở cấp module.
+Summary của ba module được gộp thành một SQL command trên `BusinessProcesses`,
+scope trước rồi group theo `EntityType + Status`; không load business row về memory.
+Mỗi queue vẫn dùng `TOP (5)` riêng theo module để giữ semantic ordering. Command
+budget cuối cùng là Administrator ≤ 1, Manager ≤ 2, Inspector ≤ 4 và Reviewer ≤ 4.
+Các command chạy tuần tự trên cùng DbContext vì EF Core DbContext không thread-safe.
 Nếu profiling chứng minh round-trip là bottleneck, checkpoint sau có thể dùng
 compiled query hoặc read service với nhiều result sets đã review; không đổi API.
 
@@ -449,7 +440,7 @@ Khoảng trống:
 plan chứng minh index hiện tại không đạt budget. Nếu index hiện tại đạt target thì
 không tạo migration chỉ vì tài liệu đã nêu candidate.
 
-Hai candidate logical index để checkpoint implementation đánh giá:
+Ba index logical đã được benchmark/query-plan chấp nhận:
 
 1. Current assignment/status: key
    `(AssignedToUserId ASC, EntityType ASC, Status ASC, UpdatedAt ASC, Id ASC)`,
@@ -460,6 +451,12 @@ Hai candidate logical index để checkpoint implementation đánh giá:
    `EntityType = 'Rfi' AND Status = 'Open' AND DueAt IS NOT NULL`; candidate include
    `RfiId`, `AssignedToUserId`. Index này phục vụ global/current-assigned overdue
    range và ordering theo hạn gần nhất.
+3. Creator scope: key
+   `(CreatedByUserId ASC, EntityType ASC, Status ASC, UpdatedAt ASC, Id ASC)`, filter
+   `CreatedByUserId IS NOT NULL`; include `InspectionId`, `ChecklistId`, `RfiId`,
+   `DueAt`, `CreatedAt`. A/B cho thấy Inspector reads giảm rõ rệt và index được dùng;
+   Manager RFI queue có regression 548 → 1.017 logical reads nên phải được ghi nhận
+   khi theo dõi production-like capacity.
 
 Các tên property trên đều tồn tại trong source `BusinessProcess`. Tên vật lý,
 include list và direction cuối cùng phải dựa trên SQL do EF sinh và query plan,
@@ -483,8 +480,13 @@ thay dữ liệu nghiệp vụ.
 - API dùng `private, no-store`; không dùng shared/public cache.
 - Payload mục tiêu nhỏ hơn 64 KiB; action queue tối đa 15 item.
 - Tối đa 6 SQL commands, không N+1, không unbounded list.
-- Mục tiêu Development sau warm-up: p95 ≤ 500 ms với 10.000 record mỗi module và
-  30 request đồng thời; p99/production SLO chưa được tuyên bố.
+- Local stress acceptance sau warm-up: 10.000 record mỗi module, 120 request mỗi
+  role, 30 request đồng thời, p95 ≤ 2.000 ms, không HTTP error, payload < 64 KiB
+  và giữ command budget Administrator ≤ 1, Manager ≤ 2, Inspector ≤ 4,
+  Reviewer ≤ 4.
+- Production-like target giữ nguyên p95 ≤ 500 ms với 10.000 record mỗi module và
+  30 request đồng thời, nhưng phải được xác minh lại trên host tương đương
+  production. Trạng thái hiện tại là Pending, không phải Pass.
 - Không tăng command timeout để che việc không đạt benchmark. Khi miss target, phải
   profile SQL, capture actual execution plan và tối ưu query/index dựa trên evidence.
 - Cancellation phải dừng query đang chờ khi client đổi route hoặc refresh request
@@ -492,9 +494,13 @@ thay dữ liệu nghiệp vụ.
 - Read-only query không tracking, không giữ transaction và không lock workflow row
   để ngăn concurrent user thực hiện transition.
 
-Hiện chưa có dataset đủ lớn để coi latency trên là evidence. Checkpoint triển khai
-phải seed dữ liệu integration/performance riêng, không dùng Development database,
-đo query count, payload bytes, latency và execution plan trước khi tuyên bố đạt.
+Benchmark A/B trên database riêng đã dùng đúng 10.000 Inspection, 10.000 Checklist
+và 10.000 RFI, 120 request mỗi role, concurrency 30 và không reset/reseed giữa hai
+nhánh. Inspector p95 là 714,1 ms ở baseline, 443,5 ms ở after-index lượt 1 và
+502,5 ms ở after-index lượt 2. Local stress profile đạt; production-like 500 ms
+vẫn Pending vì lượt 2 vượt 2,5 ms. Creator covering index được optimizer sử dụng
+và giảm đáng kể reads của Inspector, nhưng Manager RFI queue tăng từ 548 lên
+1.017 logical reads; không được diễn giải rằng index cải thiện mọi query.
 
 ## 11. Frontend design
 
@@ -649,7 +655,7 @@ Không cần Domain model/test mới nếu implementation chỉ thêm query slic
 8. Chỉ commit source sau full quality gate ở checkpoint riêng.
 
 Rollback UI/API không cần data migration. Nếu index migration đã apply, rollback chỉ
-drop hai index sau khi xác nhận không có query production khác phụ thuộc; không xóa
+drop ba index sau khi xác nhận không có query production khác phụ thuộc; không xóa
 dữ liệu. Existing list/workflow tiếp tục hoạt động độc lập với Dashboard.
 
 ## 16. ADR đã được chấp nhận
@@ -668,8 +674,8 @@ Mười hai quyết định dưới đây là contract cuối cho Dashboard UC43
 | DASH-008 | Manager scope | Full operational scope, không Dashboard mutation; action đi qua module route/capability | Khớp authorization hiện hành khi chưa có scope model | Accepted | Chỉ đưa queue action Manager thực sự có quyền, ví dụ RFI reassign |
 | DASH-009 | RFI overdue | Chỉ `Open`, `DueAt != null`, `DueAt < nowUtc`, trong scope/current assignment; Reviewer cũ bị loại sau reassign | Semantics đo được và đúng owner hiện tại | Accepted | Test boundary thời gian, scope và reassignment |
 | DASH-010 | Refresh/cache | Load khi mount, Manual Refresh, `private, no-store`; không polling/timer/browser storage/request loop | Freshness theo yêu cầu, không tạo tải nền | Accepted | Cancel/deduplicate request và không tự retry loop |
-| DASH-011 | Performance | 10.000 record/module, 30 concurrent, p95 Development ≤500 ms, payload <64 KiB, ≤6 SQL commands | Budget có thể đo; chưa coi là đạt trước benchmark | Accepted | Khi miss phải profile/query plan; không tăng timeout |
-| DASH-012 | Migration | Chỉ tạo migration index-only nếu benchmark/query plan chứng minh cần; inventory index trước; không migration nếu index hiện có đạt | Tránh index thừa và thay đổi schema không có evidence | Accepted | Chỉ hai candidate ở mục 9.3; không table/snapshot/business-data change |
+| DASH-011 | Performance | Local stress: 10.000 record/module, 120 request/role, 30 concurrent, p95 ≤2.000 ms, zero HTTP error, payload <64 KiB và command budget 1/2/4/4; production-like target giữ p95 ≤500 ms và đang Pending xác minh trên host tương đương production | Phân biệt giới hạn laptop local với capacity target; A/B thực tế không được diễn giải thành production Pass | Accepted | Local stress đã Pass; production-like chưa Pass; không tăng timeout/retry hoặc che số liệu Inspector 502,5 ms |
+| DASH-012 | Migration | Ba index-only candidate đã có evidence: current assignment, RFI Open/DueAt và creator scope; creator index GO dù phải ghi nhận Manager RFI queue tăng 548 → 1.017 logical reads | Creator index giảm Inspector reads/latency rõ rệt nhưng không cải thiện mọi query | Accepted | Migration chỉ tạo/drop đúng ba index; không table/snapshot/business-data change |
 
 ## 17. Điều kiện trước source
 
