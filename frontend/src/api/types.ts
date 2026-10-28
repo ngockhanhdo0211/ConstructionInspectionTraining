@@ -1,5 +1,28 @@
 export type User = { id: string; email: string; fullName: string; roles: string[] }
 export type LoginResponse = { accessToken: string; tokenType: string; expiresAt: string; user: User }
+export type InspectionDashboardStatusCounts = {
+  draft: number; submitted: number; underReview: number; approved: number; recheck: number; rejected: number
+}
+export type ChecklistDashboardStatusCounts = InspectionDashboardStatusCounts & { inProgress: number }
+export type RfiDashboardStatusCounts = { draft: number; open: number; responded: number; closed: number; cancelled: number }
+export type DashboardModuleSummary<TStatusCounts> = {
+  total: number; openWork: number; awaitingMyAction: number; statusCounts: TStatusCounts
+}
+export type DashboardRfiSummary = DashboardModuleSummary<RfiDashboardStatusCounts> & {
+  awaitingResponse: number; awaitingInspectorAction: number; overdueOpen: number
+}
+export type DashboardActionItem = {
+  module: 'Inspection' | 'Checklist' | 'Rfi'; entityId: string; number: string; displayTitle: string
+  status: string; actionKind: string; dueAtUtc?: string | null; updatedAtUtc: string
+  constructionObject: { id: string; code: string; name: string }; isOverdue: boolean
+}
+export type DashboardResponse = {
+  generatedAtUtc: string; roles: string[]; scopeMode: 'Full' | 'OwnAndAssigned' | 'Own' | 'Assigned'
+  inspectionSummary: DashboardModuleSummary<InspectionDashboardStatusCounts>
+  checklistSummary: DashboardModuleSummary<ChecklistDashboardStatusCounts>
+  rfiSummary: DashboardRfiSummary
+  actionQueue: DashboardActionItem[]
+}
 export type Drawing = { id: string; originalFileName: string; contentType?: string; fileSize: number; sha256?: string; pageCount: number; status: 'Uploading' | 'Ready' | 'Failed'; createdAt: string; createdByUserId: string; rowVersion?: string }
 export type PagedResult<T> = { items: T[]; pageNumber: number; pageSize: number; totalCount: number; totalPages: number }
 export type UploadResponse = { drawing: Drawing; duplicateWarning: boolean }

@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import './App.css'
 import { useAuth } from './auth/AuthContext'
@@ -24,6 +24,7 @@ import { RfiInspectorRoute } from './components/RfiInspectorRoute'
 import { RfisPage } from './pages/RfisPage'
 import { NewRfiPage } from './pages/NewRfiPage'
 import { RfiDetailPage } from './pages/RfiDetailPage'
+import { DashboardPage } from './pages/DashboardPage'
 
 const DrawingViewerPage = lazy(() => import('./pages/DrawingViewerPage').then(module => ({ default: module.DrawingViewerPage })))
 
@@ -31,6 +32,7 @@ export default function App() {
   return <Routes>
     <Route path="/login" element={<LoginRoute />} />
     <Route element={<ProtectedShell />}>
+      <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/drawings" element={<DrawingsPage />} />
       <Route path="/drawings/:id" element={<DrawingDetailPage />} />
       <Route path="/drawings/:id/viewer" element={<Suspense fallback={<p className="state" role="status">Đang mở trình xem PDF…</p>}><DrawingViewerPage /></Suspense>} />
@@ -60,6 +62,30 @@ export default function App() {
   </Routes>
 }
 
-function LoginRoute() { const { token } = useAuth(); return token ? <HomeRedirect /> : <LoginPage /> }
-function ProtectedShell() { const { token } = useAuth(); return token ? <AppShell /> : <Navigate to="/login" replace /> }
-function HomeRedirect() { const { user } = useAuth(); return <Navigate to={user?.roles.includes('INSPECTOR') || user?.roles.includes('REVIEWER') ? '/inspections' : '/drawings'} replace /> }
+function LoginRoute() {
+  const { token } = useAuth(); const location = useLocation()
+  const requestedPath = safeReturnPath((location.state as { from?: unknown } | null)?.from)
+  return token ? <Navigate to={requestedPath ?? '/dashboard'} replace /> : <LoginPage />
+}
+function ProtectedShell() {
+  const { token } = useAuth(); const location = useLocation()
+  const from = `${location.pathname}${location.search}${location.hash}`
+  return token ? <AppShell /> : <Navigate to="/login" replace state={{ from }} />
+}
+function HomeRedirect() { return <Navigate to="/dashboard" replace /> }
+
+function safeReturnPath(value: unknown) {
+  if (typeof value !== 'string' || !value.startsWith('/')) return null
+  let decoded = value
+  let stable = false
+  for (let index = 0; index < 8; index++) {
+    if (decoded.startsWith('//') || decoded.includes('\\')) return null
+    try {
+      const next = decodeURIComponent(decoded)
+      if (next === decoded) { stable = true; break }
+      decoded = next
+    } catch { return null }
+  }
+  if (!stable || decoded.startsWith('//') || decoded.includes('\\')) return null
+  return value === '/login' ? null : value
+}
